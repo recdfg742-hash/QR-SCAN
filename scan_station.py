@@ -54,10 +54,10 @@ class QRScanStationApp:
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
-        # 모델별 카운터 영구 보존
+        # 모델별 카운터 로드
         self.model_counts = self.load_model_counts()
 
-        # 모델별 독립 중복 이력 관리 (모델 전환 시에도 중복 유지)
+        # 모델별 중복 방지 세트 분리
         self.scanned_history_by_model = {m: set() for m in MODEL_CONFIG}
         self.scanned_label_by_model = {m: set() for m in MODEL_CONFIG}
 
@@ -66,7 +66,7 @@ class QRScanStationApp:
         self.pending_tree_ids = []
         self.file_lock = threading.Lock()
 
-        # 전역 바코드 버퍼 (아무 곳이나 클릭해도 스캔 가능)
+        # 전역 바코드 버퍼
         self.global_scan_buffer = []
 
         self.setup_custom_styles()
@@ -132,7 +132,6 @@ class QRScanStationApp:
                   background=[("active", "#343c4c")])
 
     def setup_ui(self):
-        # 상단 네비게이션
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
@@ -158,7 +157,6 @@ class QRScanStationApp:
         )
         btn_pw.pack(side=tk.RIGHT)
 
-        # 탭 컨테이너
         self.notebook = ttk.Notebook(self.root, style="Dark.TNotebook")
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
 
@@ -171,14 +169,10 @@ class QRScanStationApp:
         self.build_scan_tab()
         self.build_recode_tab()
 
-    # ==========================================
-    # 2. 메인 스캔 화면 구성
-    # ==========================================
     def build_scan_tab(self):
         main_frame = tk.Frame(self.tab_scan, bg=BG_MAIN)
         main_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
-        # 좌측 컨트롤 패널
         left_panel = tk.Frame(main_frame, bg=BG_PANEL, width=320)
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 15))
         left_panel.pack_propagate(False)
@@ -269,8 +263,8 @@ class QRScanStationApp:
 
         self.tree.column("DAY", width=95, anchor="center")
         self.tree.column("TIME", width=85, anchor="center")
-        self.tree.column("Label QR", width=270, anchor="w")
-        self.tree.column("DMC", width=290, anchor="w")
+        self.tree.column("Label QR", width=280, anchor="w")
+        self.tree.column("DMC", width=300, anchor="w")
         self.tree.column("JUDGMENT", width=90, anchor="center")
 
         tree_scroll = ttk.Scrollbar(right_panel, orient=tk.VERTICAL, command=self.tree.yview)
@@ -279,9 +273,6 @@ class QRScanStationApp:
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-    # ==========================================
-    # 3. Re-code 탭 화면 구성
-    # ==========================================
     def build_recode_tab(self):
         recode_frame = tk.Frame(self.tab_recode, bg=BG_MAIN)
         recode_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -334,8 +325,8 @@ class QRScanStationApp:
 
         self.tree_recode.column("DAY", width=95, anchor="center")
         self.tree_recode.column("TIME", width=85, anchor="center")
-        self.tree_recode.column("Label QR", width=270, anchor="w")
-        self.tree_recode.column("DMC", width=290, anchor="w")
+        self.tree_recode.column("Label QR", width=280, anchor="w")
+        self.tree_recode.column("DMC", width=300, anchor="w")
         self.tree_recode.column("JUDGMENT", width=90, anchor="center")
 
         scroll_r = ttk.Scrollbar(recode_frame, orient=tk.VERTICAL, command=self.tree_recode.yview)
@@ -344,12 +335,8 @@ class QRScanStationApp:
         self.tree_recode.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll_r.pack(side=tk.RIGHT, fill=tk.Y)
 
-    # ==========================================
-    # 4. 전역 키보드 리스너 (아무 곳이나 클릭해도 스캔 가능)
-    # ==========================================
     def setup_global_key_listener(self):
         def _on_key_press(event):
-            # 팝업 대화상자가 열려있을 때는 전역 스캔 방지
             focused = self.root.focus_get()
             if isinstance(focused, tk.Entry) and focused != self.scan_entry:
                 return
@@ -367,7 +354,7 @@ class QRScanStationApp:
         self.root.bind_all("<Key>", _on_key_press)
 
     # ==========================================
-    # 5. 모델 변경 및 병합 풀림 방지 로더
+    # 4. 모델 변경 및 엑셀 로더 (헤더 포함 완벽 복원)
     # ==========================================
     def on_model_changed(self, event=None):
         self.model_session_id += 1
@@ -401,43 +388,52 @@ class QRScanStationApp:
 
                 rows_to_insert = []
                 target_upper = target_code.upper()
-                last_known_label_qr = ""  # 병합된 셀(Merge) 풀림 방지용
+                last_label = ""
 
                 for row in ws.iter_rows(min_row=2, values_only=True):
                     if not row or len(row) < 6:
                         continue
-                    label_qr, box_time, _, dmc_code, dmc_time, res = row[:6]
+                    lbl_val, box_time, seq_val, dmc_val, dmc_time, res = row[:6]
 
-                    # openpyxl 병합 셀 처리: 병합된 다음 행들은 Label QR이 None이므로 직전 라벨 유지
-                    if label_qr and str(label_qr).strip() != "-":
-                        last_known_label_qr = str(label_qr).strip()
+                    lbl_str = str(lbl_val).strip() if lbl_val and str(lbl_val).strip() != "-" else ""
+                    dmc_str = str(dmc_val).strip() if dmc_val and str(dmc_val).strip() != "-" else ""
+                    res_str = str(res).strip() if res else "OK"
 
-                    ts_str = str(dmc_time if dmc_time and dmc_time != "-" else box_time)
+                    # 1) 박스 묶음 완료 헤더 행 복원
+                    if seq_val == "HEADER" or dmc_str.startswith("[박스 묶음 완료"):
+                        t_parts = str(box_time).split()
+                        day_val = t_parts[0] if len(t_parts) > 0 else ""
+                        time_val = t_parts[1] if len(t_parts) > 1 else ""
+                        rows_to_insert.append((day_val, time_val, lbl_str, dmc_str, "OK"))
+                        if lbl_str:
+                            self.scanned_label_by_model[model_name].add(lbl_str)
+                        continue
+
+                    # 2) 일반 단품 행 복원
+                    if lbl_str:
+                        last_label = lbl_str
+
+                    ts_str = str(dmc_time if dmc_time and str(dmc_time).strip() != "-" else box_time)
                     if not ts_str or ts_str == "-":
                         continue
 
-                    parts = ts_str.split()
-                    day_val = parts[0] if len(parts) > 0 else ""
-                    time_val = parts[1] if len(parts) > 1 else ""
+                    t_parts = ts_str.split()
+                    day_val = t_parts[0] if len(t_parts) > 0 else ""
+                    time_val = t_parts[1] if len(t_parts) > 1 else ""
 
-                    dmc_val = "" if (not dmc_code or dmc_code == "-") else str(dmc_code).strip()
-                    judgment = str(res) if res else "OK"
-                    lbl_val = last_known_label_qr
-
-                    # 현재 모델에 해당하는 코드만 로드
-                    is_valid_item = dmc_val.upper().startswith(target_upper)
-                    is_valid_label = lbl_val.upper().startswith(target_upper)
-
-                    if not (is_valid_item or is_valid_label):
+                    # 현재 모델에 해당하는 코드만 허용
+                    if not (dmc_str.upper().startswith(target_upper) or (last_label and last_label.upper().startswith(target_upper))):
                         continue
 
-                    # 모델별 중복 방지 세트에 적재
-                    if lbl_val and is_valid_label:
-                        self.scanned_label_by_model[model_name].add(lbl_val)
-                    if dmc_val and is_valid_item and judgment == "OK":
-                        self.scanned_history_by_model[model_name].add(dmc_val)
+                    # NG 행이 아니면 라벨 자동 매핑
+                    final_label = last_label if res_str == "OK" else ""
 
-                    rows_to_insert.append((day_val, time_val, lbl_val, dmc_val, judgment))
+                    if final_label and final_label.upper().startswith(target_upper):
+                        self.scanned_label_by_model[model_name].add(final_label)
+                    if dmc_str and dmc_str.upper().startswith(target_upper) and res_str == "OK":
+                        self.scanned_history_by_model[model_name].add(dmc_str)
+
+                    rows_to_insert.append((day_val, time_val, final_label, dmc_str, res_str))
 
                 if session_id != self.model_session_id:
                     return
@@ -455,7 +451,7 @@ class QRScanStationApp:
         threading.Thread(target=_loader, daemon=True).start()
 
     # ==========================================
-    # 6. 스캔 판정 및 기록
+    # 5. 스캔 판정 및 기록
     # ==========================================
     def process_scan(self, raw_code):
         raw_code = raw_code.strip()
@@ -478,7 +474,7 @@ class QRScanStationApp:
         self.lbl_last_scan.config(text=f"마지막 스캔: {raw_code}")
 
         # ---------------- [검증 1] 모델 코드 불일치 NG ----------------
-        # 타 모델 바코드는 엑셀/화면에 기록하지 않고 카운팅 및 락 팝업만 발생
+        # 타 모델 코드는 엑셀/테이블에 일체 기록하지 않고 화면 NG 및 락만 발생
         if scanned_prefix != target_code:
             if not is_label_qr:
                 self.model_counts[curr_model]["ng"] += 1
@@ -504,11 +500,8 @@ class QRScanStationApp:
 
         # ---------------- [검증 2] Label QR 전용 검증 ----------------
         if is_label_qr:
-            # 중복 검사 (해당 모델별 세트 조회)
             if raw_code in self.scanned_label_by_model[curr_model]:
                 self.status_box.config(text="Label QR NG", fg="#dc3545", bg="#3a1c1f")
-                threading.Thread(target=self.async_log_ng, args=(curr_model, timestamp_full, "Label QR", raw_code, "Label QR NG(중복스캔)"), daemon=True).start()
-
                 self.open_lock_popup(
                     title_text="⚠️ Label QR NG - 중복 스캔",
                     msg=(
@@ -531,8 +524,6 @@ class QRScanStationApp:
 
             if expected_qty is not None and expected_qty != current_scanned_qty:
                 self.status_box.config(text="Grouping NG", fg="#dc3545", bg="#3a1c1f")
-                threading.Thread(target=self.async_log_ng, args=(curr_model, timestamp_full, "Label QR", raw_code, f"Grouping NG(수량불일치:라벨{expected_qty}개/스캔{current_scanned_qty}개)"), daemon=True).start()
-
                 self.open_lock_popup(
                     title_text="⚠️ Grouping NG - 수량 불일치",
                     msg=(
@@ -548,7 +539,6 @@ class QRScanStationApp:
 
         # ---------------- [검증 3] 단품 QR 전용 체크 ----------------
         if not is_label_qr:
-            # 10개 초과 시 락
             if len(self.pending_items) >= MAX_ITEMS_PER_BOX:
                 self.model_counts[curr_model]["ng"] += 1
                 self.model_counts[curr_model]["total"] += 1
@@ -556,8 +546,6 @@ class QRScanStationApp:
                 self.update_stat_cards()
 
                 self.status_box.config(text="NG", fg="#dc3545", bg="#3a1c1f")
-                threading.Thread(target=self.async_log_ng, args=(curr_model, timestamp_full, "단품 DMC", raw_code, "NG(Label QR 미스캔)"), daemon=True).start()
-
                 self.open_lock_popup(
                     title_text="⚠️ NG - Label QR 미스캔",
                     msg=(
@@ -570,7 +558,6 @@ class QRScanStationApp:
                 )
                 return
 
-            # 중복 단품 검사 (해당 모델별 세트 조회)
             if raw_code in self.scanned_history_by_model[curr_model]:
                 self.model_counts[curr_model]["ng"] += 1
                 self.model_counts[curr_model]["total"] += 1
@@ -578,8 +565,6 @@ class QRScanStationApp:
                 self.update_stat_cards()
 
                 self.status_box.config(text="QR NG", fg="#fd7e14", bg="#3d2716")
-                threading.Thread(target=self.async_log_ng, args=(curr_model, timestamp_full, "단품 DMC", raw_code, "QR NG(중복스캔)"), daemon=True).start()
-
                 self.open_lock_popup(
                     title_text="🚫 QR NG - 중복 바코드 감지",
                     msg=(
@@ -610,7 +595,6 @@ class QRScanStationApp:
             }
             self.pending_items.append(item_data)
             
-            # 개별 OK 표기
             item_id = self.tree.insert("", 0, values=(day_str, time_str, "", raw_code, "OK"))
             self.pending_tree_ids.append(item_id)
             self.lbl_pending_status.config(text=f"미그룹 스캔 {len(self.pending_items)}건 – Label QR 대기 중")
@@ -618,16 +602,18 @@ class QRScanStationApp:
         else:
             self.scanned_label_by_model[curr_model].add(raw_code)
 
-            # 앞서 등록된 단품들의 Label QR 열에 값 채우기 (화면 상 영구 유지)
+            # 앞서 등록된 단품들의 Label QR 열에 값 삽입
             for t_id in self.pending_tree_ids:
                 curr_vals = self.tree.item(t_id, "values")
                 if curr_vals:
                     self.tree.item(t_id, values=(curr_vals[0], curr_vals[1], raw_code, curr_vals[3], curr_vals[4]))
 
-            # 맨 윗줄 박스 묶음 완료 행 추가
             items_to_bundle = list(self.pending_items)
             bundle_count = len(items_to_bundle)
-            self.tree.insert("", 0, values=(day_str, time_str, raw_code, f"[박스 묶음 완료: {bundle_count}건]", "OK"))
+            header_text = f"[박스 묶음 완료: {bundle_count}건]"
+
+            # 맨 윗줄에 [박스 묶음 완료] 행 추가
+            self.tree.insert("", 0, values=(day_str, time_str, raw_code, header_text, "OK"))
 
             self.pending_items.clear()
             self.pending_tree_ids.clear()
@@ -636,7 +622,7 @@ class QRScanStationApp:
 
             threading.Thread(
                 target=self.async_save_excel_group,
-                args=(curr_model, raw_code, timestamp_full, items_to_bundle),
+                args=(curr_model, raw_code, timestamp_full, items_to_bundle, header_text),
                 daemon=True
             ).start()
 
@@ -649,9 +635,6 @@ class QRScanStationApp:
         self.lbl_ok_val.config(text=str(counts["ok"]))
         self.lbl_ng_val.config(text=str(counts["ng"]))
 
-    # ==========================================
-    # 7. RESET 비밀번호 모달 팝업
-    # ==========================================
     def open_reset_dialog(self):
         win = tk.Toplevel(self.root)
         win.title("카운터 초기화")
@@ -687,9 +670,6 @@ class QRScanStationApp:
         tk.Button(win, text="초기화 실행", command=do_reset, bg="#dc3545", fg="#ffffff",
                   relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=3).pack(pady=10)
 
-    # ==========================================
-    # 8. Re-code 필터 및 엑셀 저장
-    # ==========================================
     def apply_recode_filter(self):
         self.tree_recode.delete(*self.tree_recode.get_children())
         model = self.current_model.get()
@@ -715,7 +695,7 @@ class QRScanStationApp:
             for row in ws.iter_rows(min_row=2, values_only=True):
                 if not row or len(row) < 6:
                     continue
-                label_qr, box_time, _, dmc_code, dmc_time, res = row[:6]
+                label_qr, box_time, seq_val, dmc_code, dmc_time, res = row[:6]
 
                 if label_qr and str(label_qr).strip() != "-":
                     last_known_label_qr = str(label_qr).strip()
@@ -813,9 +793,6 @@ class QRScanStationApp:
         except Exception as e:
             messagebox.showerror("오류", f"파일 저장 실패: {e}")
 
-    # ==========================================
-    # 9. 잠금 팝업 및 비밀번호 관리
-    # ==========================================
     def open_lock_popup(self, title_text, msg, header_bg, header_fg):
         dialog = tk.Toplevel(self.root)
         dialog.title(title_text)
@@ -884,7 +861,7 @@ class QRScanStationApp:
                   relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=4).pack(pady=15)
 
     # ==========================================
-    # 10. 엑셀 워크북 저장
+    # 6. 엑셀 워크북 저장 (헤더 행 포함)
     # ==========================================
     def get_or_create_workbook(self, filename):
         filepath = os.path.join(BASE_DIR, filename)
@@ -917,14 +894,11 @@ class QRScanStationApp:
 
         return wb, ws, filepath
 
-    def async_save_excel_group(self, model_name, box_qr, box_time, items):
+    def async_save_excel_group(self, model_name, box_qr, box_time, items, header_text):
         with self.file_lock:
             try:
                 filename = f"{model_name}.xlsx"
                 wb, ws, filepath = self.get_or_create_workbook(filename)
-
-                start_row = ws.max_row + 1
-                item_count = len(items)
 
                 thin_border = Border(
                     left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
@@ -932,63 +906,33 @@ class QRScanStationApp:
                 )
                 ok_fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
 
-                if item_count == 0:
-                    row_data = [box_qr, box_time, "-", "-", "-", "OK"]
+                # 1) 단품 데이터 행 추가
+                start_row = ws.max_row + 1
+                for idx, item in enumerate(items, start=1):
+                    curr_row = start_row + idx - 1
+                    ts_full = f"{item['day']} {item['time']}"
+                    row_data = [box_qr, box_time, idx, item["code"], ts_full, item["result"]]
                     ws.append(row_data)
+
                     for col in range(1, 7):
-                        c = ws.cell(row=start_row, column=col)
+                        c = ws.cell(row=curr_row, column=col)
                         c.border = thin_border
-                        c.alignment = Alignment(horizontal="center", vertical="center")
-                else:
-                    for idx, item in enumerate(items, start=1):
-                        curr_row = start_row + idx - 1
-                        ts_full = f"{item['day']} {item['time']}"
-                        row_data = [box_qr, box_time, idx, item["code"], ts_full, item["result"]]
-                        ws.append(row_data)
+                        c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6] else "left", vertical="center")
+                        if col == 6:
+                            c.fill = ok_fill
 
-                        for col in range(1, 7):
-                            c = ws.cell(row=curr_row, column=col)
-                            c.border = thin_border
-                            c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6] else "left", vertical="center")
-                            if col == 6:
-                                c.fill = ok_fill
-
-                    if item_count > 1:
-                        end_row = start_row + item_count - 1
-                        ws.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
-                        ws.merge_cells(start_row=start_row, start_column=2, end_row=end_row, end_column=2)
-                        ws.cell(row=start_row, column=1).alignment = Alignment(horizontal="left", vertical="center")
-                        ws.cell(row=start_row, column=2).alignment = Alignment(horizontal="center", vertical="center")
+                # 2) [박스 묶음 완료] 헤더 행을 마지막에 영구 기록
+                header_row = [box_qr, box_time, "HEADER", header_text, box_time, "OK"]
+                ws.append(header_row)
+                h_row_idx = ws.max_row
+                for col in range(1, 7):
+                    c = ws.cell(row=h_row_idx, column=col)
+                    c.border = thin_border
+                    c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6] else "left", vertical="center")
 
                 wb.save(filepath)
             except Exception as e:
                 print(f"[엑셀 저장 실패]: {e}")
-
-    def async_log_ng(self, model_name, timestamp, qr_type, raw_code, reason):
-        with self.file_lock:
-            try:
-                filename = f"{model_name}.xlsx"
-                wb, ws, filepath = self.get_or_create_workbook(filename)
-
-                start_row = ws.max_row + 1
-                ng_fill = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")
-                thin_border = Border(
-                    left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
-                    top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
-                )
-
-                row_data = ["-", "-", f"[{reason}]", raw_code, timestamp, "NG"]
-                ws.append(row_data)
-
-                for col in range(1, 7):
-                    c = ws.cell(row=start_row, column=col)
-                    c.border = thin_border
-                    c.fill = ng_fill
-                    c.alignment = Alignment(horizontal="center" if col in [1, 2, 3, 5, 6] else "left", vertical="center")
-
-                wb.save(filepath)
-            except Exception as e:
-                print(f"[NG 로그 저장 오류]: {e}")
 
 
 if __name__ == "__main__":
