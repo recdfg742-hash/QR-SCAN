@@ -1,0 +1,29 @@
+name: Build EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install openpyxl pyinstaller
+
+      - name: Build EXE
+        run: pyinstaller --onefile --windowed --name "QR스캔프로그램" scan_station.py
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: QR스캔프로그램
+          path: dist/*.exe
