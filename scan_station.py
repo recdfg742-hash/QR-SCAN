@@ -20,7 +20,7 @@ MODEL_CONFIG = {
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
 DEFAULT_PASSWORD = "123456"
-MAX_ITEMS_PER_BOX = 10  # 10개 초과 시 미스캔 락
+MAX_ITEMS_PER_BOX = 10
 
 def get_base_dir():
     if getattr(sys, 'frozen', False):
@@ -30,7 +30,7 @@ def get_base_dir():
 BASE_DIR = get_base_dir()
 COUNT_FILE = os.path.join(BASE_DIR, "counts.json")
 
-# 다크 테마 색상 정의
+# 다크 테마 색상표
 BG_MAIN = "#1a1f26"
 BG_PANEL = "#222731"
 BG_INPUT = "#15181e"
@@ -52,25 +52,22 @@ class QRScanStationApp:
 
         self.current_model = tk.StringVar(value='R-FRONT')
         self.admin_password = DEFAULT_PASSWORD
-        self.model_session_id = 0  # 모델 변경 시 비동기 충돌 방지 식별자
+        self.model_session_id = 0
 
-        # 모델별 카운터 데이터 로드 (영구 보존)
+        # 모델별 카운터 영구 보존
         self.model_counts = self.load_model_counts()
 
         # 대기 관리 변수
-        self.pending_items = []            # 대기 단품 리스트
-        self.pending_tree_ids = []         # Label QR 삽입용 UI Treeview ID
-        self.scanned_history = set()       # 단품 DMC 중복 방지 세트
-        self.scanned_label_history = set() # Label QR 중복 방지 세트
+        self.pending_items = []
+        self.pending_tree_ids = []
+        self.scanned_history = set()
+        self.scanned_label_history = set()
         self.file_lock = threading.Lock()
 
         self.setup_custom_styles()
         self.setup_ui()
         self.on_model_changed()
 
-    # ==========================================
-    # 2. 카운트 데이터 저장 및 로드
-    # ==========================================
     def load_model_counts(self):
         default_counts = {m: {"total": 0, "ok": 0, "ng": 0} for m in MODEL_CONFIG.keys()}
         if os.path.exists(COUNT_FILE):
@@ -96,7 +93,6 @@ class QRScanStationApp:
         style = ttk.Style()
         style.theme_use("clam")
 
-        # 탭 스타일
         style.configure("Dark.TNotebook", background=BG_MAIN, borderwidth=0)
         style.configure("Dark.TNotebook.Tab", background="#2a2f3a", foreground=TEXT_MUTED,
                         font=("맑은 고딕", 10, "bold"), padding=[15, 5])
@@ -104,7 +100,6 @@ class QRScanStationApp:
                   background=[("selected", BG_PANEL)],
                   foreground=[("selected", "#ffffff")])
 
-        # 콤보박스 스타일
         style.configure("Dark.TCombobox", 
                         fieldbackground=BG_INPUT, 
                         background="#303642", 
@@ -113,7 +108,6 @@ class QRScanStationApp:
                         darkcolor=BG_INPUT, 
                         lightcolor=BG_INPUT)
 
-        # 테이블 스타일
         style.configure("Dark.Treeview",
                         background="#1e232d",
                         foreground=TEXT_COLOR,
@@ -158,7 +152,7 @@ class QRScanStationApp:
         )
         btn_pw.pack(side=tk.RIGHT)
 
-        # 메인 탭 컨테이너
+        # 탭 컨테이너
         self.notebook = ttk.Notebook(self.root, style="Dark.TNotebook")
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
 
@@ -172,13 +166,13 @@ class QRScanStationApp:
         self.build_recode_tab()
 
     # ==========================================
-    # 3. 메인 스캔 화면 구성
+    # 2. 메인 스캔 화면 구성
     # ==========================================
     def build_scan_tab(self):
         main_frame = tk.Frame(self.tab_scan, bg=BG_MAIN)
         main_frame.pack(fill=tk.BOTH, expand=True, pady=10)
 
-        # 좌측 컨트롤 패널
+        # 좌측 패널
         left_panel = tk.Frame(main_frame, bg=BG_PANEL, width=320)
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 15))
         left_panel.pack_propagate(False)
@@ -190,8 +184,8 @@ class QRScanStationApp:
         self.lbl_model_info.pack(anchor="w", padx=20, pady=(15, 10))
 
         self.status_box = tk.Label(
-            left_panel, text="OK", font=("Arial", 46, "bold"),
-            fg="#28a745", bg="#193322", width=10, height=3, relief="flat"
+            left_panel, text="READY", font=("Arial", 46, "bold"),
+            fg="#adb5bd", bg="#2a2e37", width=10, height=3, relief="flat"
         )
         self.status_box.pack(fill=tk.X, padx=20, pady=6)
 
@@ -248,7 +242,7 @@ class QRScanStationApp:
         )
         self.lbl_pending_status.pack(fill=tk.X, padx=20, pady=(5, 5))
 
-        # 우측 결과 테이블 패널
+        # 우측 테이블 패널
         right_panel = tk.Frame(main_frame, bg=BG_MAIN)
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
@@ -258,7 +252,6 @@ class QRScanStationApp:
         )
         self.lbl_right_header.pack(fill=tk.X, pady=(0, 6))
 
-        # JUDGMENT 열 추가
         columns = ("DAY", "TIME", "Label QR", "DMC", "JUDGMENT")
         self.tree = ttk.Treeview(right_panel, columns=columns, show="headings", style="Dark.Treeview")
 
@@ -281,7 +274,7 @@ class QRScanStationApp:
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
     # ==========================================
-    # 4. Re-code 탭 화면 구성
+    # 3. Re-code 탭 화면 구성
     # ==========================================
     def build_recode_tab(self):
         recode_frame = tk.Frame(self.tab_recode, bg=BG_MAIN)
@@ -346,7 +339,7 @@ class QRScanStationApp:
         scroll_r.pack(side=tk.RIGHT, fill=tk.Y)
 
     # ==========================================
-    # 5. 모델 변경 및 격리 로드 (혼입 완벽 방지)
+    # 4. 모델 변경 및 고유 데이터 완전 격리 로드
     # ==========================================
     def on_model_changed(self, event=None):
         self.model_session_id += 1
@@ -358,19 +351,16 @@ class QRScanStationApp:
         self.lbl_model_info.config(text=f"모델 {model}\n인식코드 {target_code}")
         self.lbl_right_header.config(text=f"{model} 기록     (저장 파일: {model}.xlsx)")
         
-        # 모델 변경 시 대기열 초기화
         self.pending_items.clear()
         self.pending_tree_ids.clear()
         self.lbl_pending_status.config(text="미그룹 스캔 0건 – Label QR 대기 중")
 
-        # 저장되어 있던 카운터 즉시 표시
         self.update_stat_cards()
-
-        # 모델별 독립 데이터 로드
-        self.load_history_from_excel(model, current_session)
+        self.load_history_from_excel(model, target_code, current_session)
         self.scan_entry.focus_set()
 
-    def load_history_from_excel(self, model_name, session_id):
+    def load_history_from_excel(self, model_name, target_code, session_id):
+        # 테이블 및 중복 세트 즉시 비우기
         self.tree.delete(*self.tree.get_children())
         self.scanned_history.clear()
         self.scanned_label_history.clear()
@@ -385,6 +375,8 @@ class QRScanStationApp:
                 ws = wb.active
 
                 rows_to_insert = []
+                target_upper = target_code.upper()
+
                 for row in ws.iter_rows(min_row=2, values_only=True):
                     if not row or len(row) < 6:
                         continue
@@ -402,24 +394,31 @@ class QRScanStationApp:
                     dmc_val = "" if (not dmc_code or dmc_code == "-") else str(dmc_code)
                     judgment = str(res) if res else "OK"
 
-                    # 현재 모델 중복 세트에 적재
-                    if lbl_val:
+                    # 핵심 수정: 현재 선택 모델의 target_code로 시작하는 바코드만 화면 테이블에 허용
+                    # 타 모델 코드가 섞여 들어간 오염된 행은 화면에 출력하지 않음
+                    is_valid_item = dmc_val.upper().startswith(target_upper)
+                    is_valid_label = lbl_val.upper().startswith(target_upper)
+
+                    if not (is_valid_item or is_valid_label):
+                        continue
+
+                    # 중복 세트 복원
+                    if lbl_val and is_valid_label:
                         self.scanned_label_history.add(lbl_val)
-                    if dmc_val and not dmc_val.startswith("[NG"):
+                    if dmc_val and is_valid_item and judgment == "OK":
                         self.scanned_history.add(dmc_val)
 
                     rows_to_insert.append((day_val, time_val, lbl_val, dmc_val, judgment))
 
-                # 이전 작업 세션이 아닌 경우 렌더링 생략 (섞임 방지)
                 if session_id != self.model_session_id:
                     return
 
-                def _populate_ui():
+                def _populate():
                     if session_id == self.model_session_id:
                         for r in reversed(rows_to_insert):
                             self.tree.insert("", tk.END, values=r)
 
-                self.root.after(0, _populate_ui)
+                self.root.after(0, _populate)
 
             except Exception as e:
                 print(f"[히스토리 로드 오류]: {e}")
@@ -427,7 +426,7 @@ class QRScanStationApp:
         threading.Thread(target=_loader, daemon=True).start()
 
     # ==========================================
-    # 6. 바코드 스캔 판정 로직
+    # 5. 스캔 판정 및 기록
     # ==========================================
     def process_scan(self, event=None):
         raw_code = self.scan_entry.get().strip()
@@ -466,8 +465,8 @@ class QRScanStationApp:
                 title_text="⚠️ NG - 모델 불일치",
                 msg=(
                     f"[NG: 선택 모델과 바코드 코드가 일치하지 않습니다]\n\n"
-                    f"선택 모델: {curr_model} ({target_code})\n"
-                    f"스캔 코드: {raw_code[:10]}\n"
+                    f"현재 선택 모델: {curr_model} ({target_code})\n"
+                    f"스캔된 코드 접두: {raw_code[:10]}\n"
                     f"참고: 스캔된 코드는 [{hint_model}] 전용 코드입니다.\n\n"
                     f"관리자 비밀번호 6자리를 입력하여 해제하세요."
                 ),
@@ -494,7 +493,7 @@ class QRScanStationApp:
                 )
                 return
 
-            # 수량 일치 검증
+            # 수량 검증
             tokens = raw_code.split(';')
             expected_qty = None
             if len(tokens) >= 2 and tokens[1].isdigit():
@@ -521,7 +520,7 @@ class QRScanStationApp:
 
         # ---------------- [검증 3] 단품 QR 전용 체크 ----------------
         if not is_label_qr:
-            # 10개 초과 시 락
+            # 수량 초과 시 락
             if len(self.pending_items) >= MAX_ITEMS_PER_BOX:
                 self.model_counts[curr_model]["ng"] += 1
                 self.model_counts[curr_model]["total"] += 1
@@ -583,7 +582,7 @@ class QRScanStationApp:
             }
             self.pending_items.append(item_data)
             
-            # 개별 OK 표시 추가
+            # 개별 OK 표기
             item_id = self.tree.insert("", 0, values=(day_str, time_str, "", raw_code, "OK"))
             self.pending_tree_ids.append(item_id)
             self.lbl_pending_status.config(text=f"미그룹 스캔 {len(self.pending_items)}건 – Label QR 대기 중")
@@ -591,13 +590,13 @@ class QRScanStationApp:
         else:
             self.scanned_label_history.add(raw_code)
 
-            # 앞서 등록된 단품들의 Label QR 열에 값 삽입
+            # 앞서 등록된 단품들의 Label QR 열 채우기
             for t_id in self.pending_tree_ids:
                 curr_vals = self.tree.item(t_id, "values")
                 if curr_vals:
                     self.tree.item(t_id, values=(curr_vals[0], curr_vals[1], raw_code, curr_vals[3], curr_vals[4]))
 
-            # 맨 윗줄에 [박스 묶음 완료] 행 추가
+            # 맨 윗줄 박스 묶음 완료 행 추가
             items_to_bundle = list(self.pending_items)
             bundle_count = len(items_to_bundle)
             self.tree.insert("", 0, values=(day_str, time_str, raw_code, f"[박스 묶음 완료: {bundle_count}건]", "OK"))
@@ -623,7 +622,7 @@ class QRScanStationApp:
         self.lbl_ng_val.config(text=str(counts["ng"]))
 
     # ==========================================
-    # 7. RESET 비밀번호 모달 팝업
+    # 6. RESET 비밀번호 모달 팝업
     # ==========================================
     def open_reset_dialog(self):
         win = tk.Toplevel(self.root)
@@ -661,11 +660,12 @@ class QRScanStationApp:
                   relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=3).pack(pady=10)
 
     # ==========================================
-    # 8. Re-code 필터 및 엑셀 저장
+    # 7. Re-code 필터 및 엑셀 저장
     # ==========================================
     def apply_recode_filter(self):
         self.tree_recode.delete(*self.tree_recode.get_children())
         model = self.current_model.get()
+        target_upper = MODEL_CONFIG[model].upper()
         filepath = os.path.join(BASE_DIR, f"{model}.xlsx")
 
         if not os.path.exists(filepath):
@@ -704,13 +704,14 @@ class QRScanStationApp:
                 if end_time and r_time > end_time:
                     continue
 
-                matched.append((
-                    r_day,
-                    r_time,
-                    "" if not label_qr or label_qr == "-" else str(label_qr),
-                    "" if not dmc_code or dmc_code == "-" else str(dmc_code),
-                    str(res)
-                ))
+                lbl_val = "" if not label_qr or label_qr == "-" else str(label_qr)
+                dmc_val = "" if not dmc_code or dmc_code == "-" else str(dmc_code)
+
+                # Re-code에서도 현재 모델 코드에 부합하는 데이터만 선별
+                if not (dmc_val.upper().startswith(target_upper) or lbl_val.upper().startswith(target_upper)):
+                    continue
+
+                matched.append((r_day, r_time, lbl_val, dmc_val, str(res)))
 
             for m in reversed(matched):
                 self.tree_recode.insert("", tk.END, values=m)
@@ -781,7 +782,7 @@ class QRScanStationApp:
             messagebox.showerror("오류", f"파일 저장 실패: {e}")
 
     # ==========================================
-    # 9. 잠금 팝업 및 비밀번호 설정
+    # 8. 잠금 팝업 및 비밀번호 관리
     # ==========================================
     def open_lock_popup(self, title_text, msg, header_bg, header_fg):
         dialog = tk.Toplevel(self.root)
@@ -851,7 +852,7 @@ class QRScanStationApp:
                   relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=4).pack(pady=15)
 
     # ==========================================
-    # 10. 엑셀 워크북 저장
+    # 9. 엑셀 워크북 저장
     # ==========================================
     def get_or_create_workbook(self, filename):
         filepath = os.path.join(BASE_DIR, filename)
