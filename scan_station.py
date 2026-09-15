@@ -228,7 +228,6 @@ class QRScanStationApp:
         self.lbl_ng_val.pack()
         tk.Label(card_ng, text="NG", font=("Arial", 8, "bold"), fg=TEXT_MUTED, bg="#1a1e26").pack()
 
-        # 리셋 버튼
         btn_reset = tk.Button(
             left_panel, text="RESET (카운터 초기화)", command=self.open_reset_dialog,
             bg="#2c323d", fg="#ff8787", activebackground="#3d2729", activeforeground="#ff6b6b",
@@ -390,46 +389,58 @@ class QRScanStationApp:
         dialog.geometry(f"{width}x{height}+{max(0, x)}+{max(0, y)}")
 
     # ==========================================
-    # MANAGER MODE 토글 처리
+    # MANAGER MODE 켜기/끄기 (수동 종료 시에도 비번 확인)
     # ==========================================
     def toggle_manager_mode(self):
+        win = tk.Toplevel(self.root)
+        win.configure(bg=BG_PANEL)
+        win.transient(self.root)
+        win.grab_set()
+
+        self.center_popup(win, 360, 210)
+
         if not self.is_manager_mode:
-            win = tk.Toplevel(self.root)
-            win.title("MANAGER MODE 인증")
-            win.configure(bg=BG_PANEL)
-            win.transient(self.root)
-            win.grab_set()
-
-            self.center_popup(win, 360, 210)
-
-            tk.Label(win, text="MANAGER MODE를 활성화하려면\n관리자 비밀번호를 입력하세요.", 
-                     font=("맑은 고딕", 10, "bold"), fg=TEXT_COLOR, bg=BG_PANEL).pack(pady=(15, 8))
-
-            pw_entry = tk.Entry(win, show="*", font=("Arial", 14), justify="center", bg=BG_INPUT, fg="#ffffff")
-            pw_entry.pack(pady=5)
-            pw_entry.focus_set()
-
-            lbl_err = tk.Label(win, text="", font=("맑은 고딕", 9), fg="#ff6b6b", bg=BG_PANEL)
-            lbl_err.pack()
-
-            def verify(event=None):
-                if pw_entry.get() == self.admin_password:
-                    self.is_manager_mode = True
-                    self.btn_manager.config(bg="#28a745", fg="#ffffff", text="MANAGER MODE [ON]")
-                    win.destroy()
-                    self.scan_entry.focus_set()
-                else:
-                    lbl_err.config(text="비밀번호가 일치하지 않습니다.")
-                    pw_entry.delete(0, tk.END)
-
-            pw_entry.bind("<Return>", verify)
-            tk.Button(win, text="인증 완료", command=verify, bg="#28a745", fg="#ffffff",
-                      relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=3).pack(pady=10)
+            win.title("MANAGER MODE 활성화")
+            msg_text = "MANAGER MODE를 활성화하려면\n관리자 비밀번호를 입력하세요."
+            btn_title = "활성화 인증"
+            target_state = True
         else:
+            win.title("MANAGER MODE 종료")
+            msg_text = "MANAGER MODE를 종료하려면\n관리자 비밀번호를 입력하세요."
+            btn_title = "종료 인증"
+            target_state = False
+
+        tk.Label(win, text=msg_text, font=("맑은 고딕", 10, "bold"), fg=TEXT_COLOR, bg=BG_PANEL).pack(pady=(15, 8))
+
+        pw_entry = tk.Entry(win, show="*", font=("Arial", 14), justify="center", bg=BG_INPUT, fg="#ffffff")
+        pw_entry.pack(pady=5)
+        pw_entry.focus_set()
+
+        lbl_err = tk.Label(win, text="", font=("맑은 고딕", 9), fg="#ff6b6b", bg=BG_PANEL)
+        lbl_err.pack()
+
+        def verify(event=None):
+            if pw_entry.get() == self.admin_password:
+                self.is_manager_mode = target_state
+                if self.is_manager_mode:
+                    self.btn_manager.config(bg="#28a745", fg="#ffffff", text="MANAGER MODE [ON]")
+                else:
+                    self.btn_manager.config(bg="#2c323d", fg="#adb5bd", text="MANAGER MODE")
+                win.destroy()
+                self.scan_entry.focus_set()
+            else:
+                lbl_err.config(text="비밀번호가 일치하지 않습니다.")
+                pw_entry.delete(0, tk.END)
+
+        pw_entry.bind("<Return>", verify)
+        tk.Button(win, text=btn_title, command=verify, bg="#28a745" if target_state else "#dc3545", fg="#ffffff",
+                  relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=3).pack(pady=10)
+
+    # 1) 프로세스 완료 시 자동 종료 함수
+    def auto_turn_off_manager_mode(self):
+        if self.is_manager_mode:
             self.is_manager_mode = False
             self.btn_manager.config(bg="#2c323d", fg="#adb5bd", text="MANAGER MODE")
-            messagebox.showinfo("알림", "MANAGER MODE가 비활성화되었습니다.")
-            self.scan_entry.focus_set()
 
     # ==========================================
     # 4. 모델 변경 및 엑셀 로더
@@ -545,7 +556,7 @@ class QRScanStationApp:
         threading.Thread(target=_loader, daemon=True).start()
 
     # ==========================================
-    # 5. 스캔 판정 로직
+    # 5. 스캔 판정 및 정밀 프로세스 처리
     # ==========================================
     def process_scan(self, raw_code):
         raw_code = raw_code.strip()
@@ -555,10 +566,9 @@ class QRScanStationApp:
         if not raw_code:
             return
 
-        # ---------------- [요구사항 1] 2초 인터벌 검사 (순식간 중복 스캔 차단) ----------------
+        # ---------------- [2초 쿨다운] ----------------
         current_time = time.time()
         if raw_code == self.last_scanned_code and (current_time - self.last_scanned_time) < 2.0:
-            # 2초 이내의 동일 바코드 재입력은 무시
             return
 
         self.last_scanned_code = raw_code
@@ -633,7 +643,7 @@ class QRScanStationApp:
 
         # ---------------- [검증 3] 단품 QR 전용 체크 ----------------
         if not is_label_qr:
-            # [요구사항 3] 11번째 이상 단품 스캔 시: 기록하지 않고 락만 발생
+            # 11번째 이상 단품 스캔 시: 기록 없이 락만 발생
             if len(self.pending_items) >= MAX_ITEMS_PER_BOX:
                 self.set_status("NG", "#dc3545", "#3a1c1f")
                 self.open_lock_popup(
@@ -651,10 +661,10 @@ class QRScanStationApp:
 
             is_already_scanned = (raw_code in self.scanned_history_by_model[curr_model])
 
-            # [요구사항 2] MANAGER MODE에 따른 분기 처리
+            # MANAGER MODE 분기 로직
             if self.is_manager_mode:
                 if not is_already_scanned:
-                    # 2-2) 매니저 모드인데 신규 QR이 들어온 경우: 기록 없이 NG 락 발생
+                    # 2) 신규 QR 리딩된 경우: 기능 켜둔 채로 NG 락 발생 (기록 X)
                     self.set_status("NG", "#dc3545", "#3a1c1f")
                     self.open_lock_popup(
                         title_text="⚠️ NG - 관리자 모드 오류",
@@ -669,8 +679,8 @@ class QRScanStationApp:
                     )
                     return
                 else:
-                    # 2-1) 매니저 모드이며 기존 중복 NG가 났던 QR인 경우: 이전 기록은 그대로 두고 이번 스캔은 정상 OK 처리
-                    pass  # 하단 OK 처리 로직으로 정상 통과
+                    # 1) 기존 QR 중복 NG가 발생한 QR 리딩: 이번 건 OK 처리 후 '매니저 모드 자동 종료'
+                    self.auto_turn_off_manager_mode()
 
             else:
                 # 일반 모드에서의 중복 검사
@@ -682,10 +692,10 @@ class QRScanStationApp:
 
                     self.set_status("QR NG", "#fd7e14", "#3d2716")
 
-                    # 1) 방금 스캔된 중복 행 삽입
+                    # 방금 찍힌 중복 행 추가
                     self.tree.insert("", 0, values=(day_str, time_str, "-", raw_code, "NG", "[중복 스캔]"), tags=("ng_row",))
 
-                    # 2) 원본 단품 및 헤더만 NG로 변경
+                    # 원본 단품 및 헤더 행만 골라 NG 처리
                     matched_label_qr = None
                     for item_id in self.tree.get_children():
                         vals = list(self.tree.item(item_id, "values"))
