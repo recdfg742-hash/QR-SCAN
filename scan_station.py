@@ -14,7 +14,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # ==========================================
 MODEL_CONFIG = {
     'S-FRONT': 'MPL02916AD',
-    'S-REAR':  'MPL02915AD',
+    'S-REAR':  'MPL02914AD',  # 수정 반영: MPL02915AD -> MPL02914AD
     'R-FRONT': 'MPL02926AD',
     'R-REAR':  'MPL02925AD'
 }
@@ -280,7 +280,6 @@ class QRScanStationApp:
                   background=[("active", "#343c4c")])
 
     def setup_ui(self):
-        # ---------------- 상단 헤더 바 (모델 + 언어 선택) ----------------
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
@@ -299,7 +298,6 @@ class QRScanStationApp:
         self.model_combo.pack(side=tk.LEFT)
         self.model_combo.bind("<<ComboboxSelected>>", self.on_model_changed)
 
-        # 언어 콤보박스 (우측 끝 배치)
         self.lang_combo = ttk.Combobox(
             header_frame,
             textvariable=self.current_lang,
@@ -322,7 +320,6 @@ class QRScanStationApp:
         )
         self.btn_pw.pack(side=tk.RIGHT, padx=(0, 15))
 
-        # 메인 탭 컨테이너
         self.notebook = ttk.Notebook(self.root, style="Dark.TNotebook")
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
 
@@ -513,15 +510,10 @@ class QRScanStationApp:
         self.tree_recode.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll_r.pack(side=tk.RIGHT, fill=tk.Y)
 
-    # ==========================================
-    # 언어 전환 이벤트 및 텍스트 일괄 갱신
-    # ==========================================
     def on_language_changed(self, event=None):
-        # 탭 텍스트 갱신
         self.notebook.tab(0, text=self.t("tab_scan"))
         self.notebook.tab(1, text=self.t("tab_recode"))
 
-        # 헤더 및 버튼 갱신
         self.btn_pw.config(text=self.t("pw_setting"))
         self.btn_reset.config(text=self.t("reset_btn"))
         if self.is_manager_mode:
@@ -529,7 +521,6 @@ class QRScanStationApp:
         else:
             self.btn_manager.config(text=self.t("manager_btn"))
 
-        # 라벨 및 안내문 갱신
         self.lbl_input_guide.config(text=self.t("input_guide"))
         model = self.current_model.get()
         target_code = MODEL_CONFIG[model]
@@ -537,7 +528,6 @@ class QRScanStationApp:
         self.lbl_right_header.config(text=self.t("record_header", model=model))
         self.lbl_pending_status.config(text=self.t("pending_status", count=len(self.pending_items)))
 
-        # 테이블 헤더 갱신 (메인 & Re-code)
         for tree_obj in (self.tree, self.tree_recode):
             tree_obj.heading("DAY", text=self.t("th_day"))
             tree_obj.heading("TIME", text=self.t("th_time"))
@@ -546,7 +536,6 @@ class QRScanStationApp:
             tree_obj.heading("JUDGMENT", text=self.t("th_judgment"))
             tree_obj.heading("Content", text=self.t("th_content"))
 
-        # Re-code 탭 라벨 및 버튼 갱신
         self.lbl_filter_day.config(text=self.t("filter_day"))
         self.lbl_filter_time.config(text=self.t("filter_time"))
         self.btn_search.config(text=self.t("search_btn"))
@@ -795,7 +784,6 @@ class QRScanStationApp:
         if not raw_code:
             return
 
-        # 매니저 모드 Label QR 대기 처리
         if self.manager_label_popup:
             is_label_candidate = (raw_code.count(';') >= 3)
             if not is_label_candidate:
@@ -821,7 +809,6 @@ class QRScanStationApp:
             self.set_status("OK", "#28a745", "#193322")
             return
 
-        # 2초 쿨다운
         current_time = time.time()
         if raw_code == self.last_scanned_code and (current_time - self.last_scanned_time) < 2.0:
             return
@@ -841,7 +828,6 @@ class QRScanStationApp:
         is_label_qr = (raw_code.count(';') >= 3)
         self.lbl_last_scan.config(text=f"{self.t('last_scan')}: {raw_code}")
 
-        # ---------------- [검증 1] 모델 코드 불일치 NG ----------------
         if scanned_prefix != target_code:
             self.set_status("NG", "#dc3545", "#3a1c1f")
             hint_model = CODE_TO_MODEL.get(scanned_prefix, "Unknown")
@@ -852,7 +838,6 @@ class QRScanStationApp:
             )
             return
 
-        # ---------------- [검증 2] Label QR 전용 검증 ----------------
         if is_label_qr:
             if raw_code in self.scanned_label_by_model[curr_model]:
                 self.set_status("Label QR NG", "#dc3545", "#3a1c1f")
@@ -879,7 +864,6 @@ class QRScanStationApp:
                 )
                 return
 
-        # ---------------- [검증 3] 단품 QR 전용 체크 ----------------
         if not is_label_qr:
             if len(self.pending_items) >= MAX_ITEMS_PER_BOX:
                 self.set_status("NG", "#dc3545", "#3a1c1f")
@@ -892,7 +876,6 @@ class QRScanStationApp:
 
             is_already_scanned = (raw_code in self.scanned_history_by_model[curr_model])
 
-            # MANAGER MODE 분기 로직
             if self.is_manager_mode:
                 if not is_already_scanned:
                     self.set_status("NG", "#dc3545", "#3a1c1f")
@@ -903,7 +886,6 @@ class QRScanStationApp:
                     )
                     return
                 else:
-                    # 기존 중복 NG QR: OK 처리 및 라벨 매핑 대기 (카운터 불변)
                     self.set_status("OK", "#28a745", "#193322")
                     item_data = {
                         "day": day_str,
@@ -924,7 +906,6 @@ class QRScanStationApp:
                     return
 
             else:
-                # 일반 모드 중복 검사
                 if is_already_scanned:
                     self.model_counts[curr_model]["ng"] += 1
                     self.model_counts[curr_model]["total"] += 1
@@ -969,7 +950,6 @@ class QRScanStationApp:
                     )
                     return
 
-        # ---------------- [일반 모드 검증 통과] 정상 OK 처리 ----------------
         self.set_status("OK", "#28a745", "#193322")
 
         if not is_label_qr:
@@ -1224,7 +1204,7 @@ class QRScanStationApp:
             ws = wb.active
             ws.title = "Re-code"
 
-            headers = ["DAY", "TIME", "Label QR", "DMC", "JUDGMENT", "Content"]
+            headers = ["DAY", "TIME", "Label QR", "DMC", "판정", "Content"]
             ws.append(headers)
 
             header_fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
