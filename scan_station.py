@@ -14,7 +14,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 # ==========================================
 MODEL_CONFIG = {
     'S-FRONT': 'MPL02916AD',
-    'S-REAR':  'MPL02914AD',  # 수정 반영: MPL02915AD -> MPL02914AD
+    'S-REAR':  'MPL02914AD',
     'R-FRONT': 'MPL02926AD',
     'R-REAR':  'MPL02925AD'
 }
@@ -31,7 +31,6 @@ def get_base_dir():
 BASE_DIR = get_base_dir()
 COUNT_FILE = os.path.join(BASE_DIR, "counts.json")
 
-# 다국어 번역 팩 (한국어 / English / Polski)
 LANG_PACK = {
     "한국어": {
         "title": "QR SCAN STATION",
@@ -59,7 +58,6 @@ LANG_PACK = {
         "save_btn": "💾 Save (엑셀 저장)",
         "box_complete": "[박스 묶음 완료: {count}건]",
         "dup_scan_tag": "[중복 스캔]",
-        # 팝업 메시지
         "ng_model_title": "⚠️ NG - 모델 불일치",
         "ng_model_msg": "[NG: 선택 모델과 바코드 코드가 일치하지 않습니다]\n\n현재 선택 모델: {model} ({target})\n스캔된 코드 접두: {prefix}\n참고: 스캔된 코드는 [{hint}] 전용 코드입니다.\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
         "ng_label_dup_title": "⚠️ Label QR NG - 중복 스캔",
@@ -190,7 +188,7 @@ class QRScanStationApp:
         self.root.configure(bg=BG_MAIN)
 
         self.current_lang = tk.StringVar(value="한국어")
-        self.current_model = tk.StringVar(value='R-FRONT')
+        self.current_model = tk.StringVar(value='S-FRONT')
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
@@ -200,6 +198,9 @@ class QRScanStationApp:
 
         self.last_scanned_code = ""
         self.last_scanned_time = 0.0
+
+        # 엔터키 미전송 스캐너를 위한 자동 타이머 변수
+        self.auto_submit_timer = None
 
         self.model_counts = self.load_model_counts()
         self.scanned_history_by_model = {m: set() for m in MODEL_CONFIG}
@@ -369,6 +370,9 @@ class QRScanStationApp:
         )
         self.scan_entry.pack(fill=tk.X, padx=20, pady=(4, 15), ipady=5)
         self.scan_entry.bind("<Return>", lambda e: self.process_scan(self.scan_entry.get()))
+
+        # 엔터키가 안 들어오는 스캐너를 위한 실시간 타이머 트리거
+        self.scan_entry.bind("<KeyRelease>", self.on_entry_key_release)
 
         stats_frame = tk.Frame(left_panel, bg=BG_PANEL)
         stats_frame.pack(fill=tk.X, padx=20, pady=3)
@@ -543,6 +547,28 @@ class QRScanStationApp:
 
         self.scan_entry.focus_set()
 
+    # ==========================================
+    # 엔터키 없는 스캐너 자동 제출 타이머 로직 (0.15초 무입력 시 자동 엔터)
+    # ==========================================
+    def on_entry_key_release(self, event):
+        if event.keysym in ("Return", "KP_Enter"):
+            if self.auto_submit_timer:
+                self.root.after_cancel(self.auto_submit_timer)
+                self.auto_submit_timer = None
+            return
+
+        text = self.scan_entry.get().strip()
+        # 바코드 길이가 10자리 이상 들어왔을 때 150ms 멈춤 감지 시 자동 실행
+        if len(text) >= 10:
+            if self.auto_submit_timer:
+                self.root.after_cancel(self.auto_submit_timer)
+            self.auto_submit_timer = self.root.after(150, self._trigger_auto_submit_entry)
+
+    def _trigger_auto_submit_entry(self):
+        text = self.scan_entry.get().strip()
+        if text:
+            self.process_scan(text)
+
     def setup_global_key_listener(self):
         def _on_key_press(event):
             focused = self.root.focus_get()
@@ -550,6 +576,10 @@ class QRScanStationApp:
                 return
 
             if event.keysym in ("Return", "KP_Enter"):
+                if self.auto_submit_timer:
+                    self.root.after_cancel(self.auto_submit_timer)
+                    self.auto_submit_timer = None
+
                 if self.global_scan_buffer:
                     scanned_text = "".join(self.global_scan_buffer).strip()
                     self.global_scan_buffer.clear()
@@ -558,8 +588,21 @@ class QRScanStationApp:
                         self.process_scan(scanned_text)
             elif event.char and event.char.isprintable():
                 self.global_scan_buffer.append(event.char)
+                # 포커스가 바깥에 있어도 엔터키 없는 스캐너 자동 실행
+                if len(self.global_scan_buffer) >= 10:
+                    if self.auto_submit_timer:
+                        self.root.after_cancel(self.auto_submit_timer)
+                    self.auto_submit_timer = self.root.after(150, self._trigger_auto_submit_global)
 
         self.root.bind_all("<Key>", _on_key_press)
+
+    def _trigger_auto_submit_global(self):
+        if self.global_scan_buffer:
+            scanned_text = "".join(self.global_scan_buffer).strip()
+            self.global_scan_buffer.clear()
+            self.scan_entry.delete(0, tk.END)
+            if scanned_text:
+                self.process_scan(scanned_text)
 
     def set_status(self, text, fg_color, bg_color):
         if len(text) <= 2:
@@ -774,9 +817,13 @@ class QRScanStationApp:
         threading.Thread(target=_loader, daemon=True).start()
 
     # ==========================================
-    # 5. 스캔 판정 및 정밀 프로세스 처리
+    # 5. 스캔 판정 로직
     # ==========================================
     def process_scan(self, raw_code):
+        if self.auto_submit_timer:
+            self.root.after_cancel(self.auto_submit_timer)
+            self.auto_submit_timer = None
+
         raw_code = raw_code.strip()
         self.scan_entry.delete(0, tk.END)
         self.global_scan_buffer.clear()
