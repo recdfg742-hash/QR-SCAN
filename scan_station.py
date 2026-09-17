@@ -9,14 +9,17 @@ from datetime import datetime
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
 # ==========================================
-# 1. 모델 매핑 및 다국어 딕셔너리
+# 1. FRONT 전용 모델 설정 (S-FRONT, R-FRONT)
 # ==========================================
 MODEL_CONFIG = {
     'S-FRONT': 'MPL02916AD',
-    'S-REAR':  'MPL02914AD',
-    'R-FRONT': 'MPL02926AD',
-    'R-REAR':  'MPL02925AD'
+    'R-FRONT': 'MPL02926AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
@@ -29,11 +32,11 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
-COUNT_FILE = os.path.join(BASE_DIR, "counts.json")
+COUNT_FILE = os.path.join(BASE_DIR, "counts_front.json")
 
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -58,6 +61,8 @@ LANG_PACK = {
         "save_btn": "💾 Save (엑셀 저장)",
         "box_complete": "[박스 묶음 완료: {count}건]",
         "dup_scan_tag": "[중복 스캔]",
+        "sorting_title": "⚠️ Sorting 필요 제품 경고",
+        "sorting_msg": "[알림: Sorting 필요 제품]\n\n해당 제품은 Sorting 대상 리스트에 등록되어 있습니다.\n\n바코드를 별도로 격리한 뒤 [Enter] 키를 누르세요.",
         "ng_model_title": "⚠️ NG - 모델 불일치",
         "ng_model_msg": "[NG: 선택 모델과 바코드 코드가 일치하지 않습니다]\n\n현재 선택 모델: {model} ({target})\n스캔된 코드 접두: {prefix}\n참고: 스캔된 코드는 [{hint}] 전용 코드입니다.\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
         "ng_label_dup_title": "⚠️ Label QR NG - 중복 스캔",
@@ -75,10 +80,11 @@ LANG_PACK = {
         "mgr_popup_main": "Grouping을 위한 LABEL QR을 리딩해주세요.",
         "mgr_popup_note": "* 제품의 DMC Code를 스캔하면 무시됩니다.\n* 올바른 Label QR을 스캔하면 자동으로 적용 및 종료됩니다.",
         "unlock_btn": "확인 및 잠금 해제",
+        "confirm_btn": "확인 (Enter)",
         "pw_err": "비밀번호가 올바르지 않습니다."
     },
     "English": {
-        "title": "QR SCAN STATION",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Password Setting",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -103,6 +109,8 @@ LANG_PACK = {
         "save_btn": "💾 Save (Excel Export)",
         "box_complete": "[Box Grouping Done: {count} pcs]",
         "dup_scan_tag": "[Duplicate Scan]",
+        "sorting_title": "⚠️ Sorting Required Alert",
+        "sorting_msg": "[Alert: Sorting Required Product]\n\nThis product is in the Sorting list.\n\nIsolate the part and press [Enter] to continue.",
         "ng_model_title": "⚠️ NG - Model Mismatch",
         "ng_model_msg": "[NG: Scanned barcode does not match selected model]\n\nSelected Model: {model} ({target})\nScanned Prefix: {prefix}\nRef: Scanned code belongs to [{hint}].\n\nEnter 6-digit Admin Password to unlock.",
         "ng_label_dup_title": "⚠️ Label QR NG - Duplicate Label",
@@ -120,10 +128,11 @@ LANG_PACK = {
         "mgr_popup_main": "Please scan LABEL QR for Grouping.",
         "mgr_popup_note": "* DMC part barcodes will be ignored.\n* Scanning a valid Label QR will finalize and exit mode.",
         "unlock_btn": "Confirm & Unlock",
+        "confirm_btn": "Confirm (Enter)",
         "pw_err": "Incorrect Password."
     },
     "Polski": {
-        "title": "QR SCAN STATION",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Ustawienie hasła",
         "tab_scan": "  Skan QR  ",
         "tab_recode": "  Re-code  ",
@@ -148,6 +157,8 @@ LANG_PACK = {
         "save_btn": "💾 Zapisz (Eksport Excel)",
         "box_complete": "[Pakiet ukończony: {count} szt.]",
         "dup_scan_tag": "[Duplikat skanu]",
+        "sorting_title": "⚠️ Wymagane sortowanie",
+        "sorting_msg": "[Uwaga: Wymagane sortowanie produktu]\n\nTen produkt znajduje się na liście sortowania.\n\nOdizoluj część i naciśnij [Enter], aby kontynuować.",
         "ng_model_title": "⚠️ NG - Niezgodność modelu",
         "ng_model_msg": "[NG: Zeskanowany kod nie pasuje do wybranego modelu]\n\nWybrany model: {model} ({target})\nPrefiks kodu: {prefix}\nUwaga: Ten kod należy do [{hint}].\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
         "ng_label_dup_title": "⚠️ Label QR NG - Duplikat etykiety",
@@ -165,6 +176,7 @@ LANG_PACK = {
         "mgr_popup_main": "Zeskanuj LABEL QR, aby przypisać grupę.",
         "mgr_popup_note": "* Kody DMC produktów będą ignorowane.\n* Zeskanowanie prawidłowej etykiety zakończy tryb.",
         "unlock_btn": "Potwierdź i odblokuj",
+        "confirm_btn": "Potwierdź (Enter)",
         "pw_err": "Nieprawidłowe hasło."
     }
 }
@@ -179,10 +191,10 @@ COLOR_OK = "#28a745"
 COLOR_NG = "#dc3545"
 
 
-class QRScanStationApp:
+class QRScanStationFrontApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION")
+        self.root.title("QR SCAN STATION [FRONT]")
         self.root.geometry("1340x800")
         self.root.minsize(1200, 720)
         self.root.configure(bg=BG_MAIN)
@@ -195,16 +207,16 @@ class QRScanStationApp:
         self.is_manager_mode = False
         self.manager_recode_target = None
         self.manager_label_popup = None
+        self.active_popup = None
 
         self.last_scanned_code = ""
         self.last_scanned_time = 0.0
-
-        # 엔터키 미전송 스캐너를 위한 자동 타이머 변수
         self.auto_submit_timer = None
 
         self.model_counts = self.load_model_counts()
         self.scanned_history_by_model = {m: set() for m in MODEL_CONFIG}
         self.scanned_label_by_model = {m: set() for m in MODEL_CONFIG}
+        self.sorting_list_by_model = {m: set() for m in MODEL_CONFIG}
 
         self.pending_items = []
         self.pending_tree_ids = []
@@ -222,6 +234,14 @@ class QRScanStationApp:
         if kwargs:
             return text.format(**kwargs)
         return text
+
+    def play_alarm_sound(self):
+        def _beep():
+            if winsound:
+                for _ in range(3):
+                    winsound.Beep(1000, 400)
+                    time.sleep(0.1)
+        threading.Thread(target=_beep, daemon=True).start()
 
     def load_model_counts(self):
         default_counts = {m: {"total": 0, "ok": 0, "ng": 0} for m in MODEL_CONFIG}
@@ -284,7 +304,7 @@ class QRScanStationApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="QR  SCAN  STATION  [FRONT]", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -370,8 +390,6 @@ class QRScanStationApp:
         )
         self.scan_entry.pack(fill=tk.X, padx=20, pady=(4, 15), ipady=5)
         self.scan_entry.bind("<Return>", lambda e: self.process_scan(self.scan_entry.get()))
-
-        # 엔터키가 안 들어오는 스캐너를 위한 실시간 타이머 트리거
         self.scan_entry.bind("<KeyRelease>", self.on_entry_key_release)
 
         stats_frame = tk.Frame(left_panel, bg=BG_PANEL)
@@ -547,9 +565,6 @@ class QRScanStationApp:
 
         self.scan_entry.focus_set()
 
-    # ==========================================
-    # 엔터키 없는 스캐너 자동 제출 타이머 로직 (0.15초 무입력 시 자동 엔터)
-    # ==========================================
     def on_entry_key_release(self, event):
         if event.keysym in ("Return", "KP_Enter"):
             if self.auto_submit_timer:
@@ -558,7 +573,6 @@ class QRScanStationApp:
             return
 
         text = self.scan_entry.get().strip()
-        # 바코드 길이가 10자리 이상 들어왔을 때 150ms 멈춤 감지 시 자동 실행
         if len(text) >= 10:
             if self.auto_submit_timer:
                 self.root.after_cancel(self.auto_submit_timer)
@@ -588,7 +602,6 @@ class QRScanStationApp:
                         self.process_scan(scanned_text)
             elif event.char and event.char.isprintable():
                 self.global_scan_buffer.append(event.char)
-                # 포커스가 바깥에 있어도 엔터키 없는 스캐너 자동 실행
                 if len(self.global_scan_buffer) >= 10:
                     if self.auto_submit_timer:
                         self.root.after_cancel(self.auto_submit_timer)
@@ -628,7 +641,7 @@ class QRScanStationApp:
         dialog.geometry(f"{width}x{height}+{max(0, x)}+{max(0, y)}")
 
     def toggle_manager_mode(self):
-        if self.manager_label_popup:
+        if self.manager_label_popup or self.active_popup:
             return
 
         win = tk.Toplevel(self.root)
@@ -704,7 +717,50 @@ class QRScanStationApp:
         self.manager_label_popup = popup
 
     # ==========================================
-    # 4. 모델 변경 및 엑셀 로더
+    # Sorting 경고 팝업 (알람 소리 + Enter로만 해제)
+    # ==========================================
+    def open_sorting_popup(self, dmc_code):
+        dialog = tk.Toplevel(self.root)
+        dialog.title(self.t("sorting_title"))
+        dialog.resizable(False, False)
+        dialog.configure(bg="#3a1c1f")
+
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        self.center_popup(dialog, 520, 300)
+        self.active_popup = dialog
+
+        # 경고 알람음 재생
+        self.play_alarm_sound()
+
+        msg = (
+            f"[{self.t('sorting_title')}]\n\n"
+            f"DMC Code: {dmc_code}\n\n"
+            f"해당 제품은 'Sorting 필요 제품'입니다.\n"
+            f"제품을 분리 격리한 후 [Enter] 키를 누르세요."
+        )
+        tk.Label(dialog, text=msg, font=("맑은 고딕", 11, "bold"), bg="#3a1c1f", fg="#ff6b6b", justify=tk.LEFT).pack(pady=25, padx=20)
+
+        def close_dialog(event=None):
+            dialog.grab_release()
+            dialog.destroy()
+            self.active_popup = None
+            self.set_status("READY", "#adb5bd", "#2a2e37")
+            self.scan_entry.focus_set()
+
+        dialog.bind("<Return>", close_dialog)
+        dialog.bind("<KP_Enter>", close_dialog)
+
+        btn = tk.Button(dialog, text=self.t("confirm_btn"), command=close_dialog,
+                        font=("맑은 고딕", 11, "bold"), bg="#dc3545", fg="#ffffff",
+                        relief="flat", padx=20, pady=6, cursor="hand2")
+        btn.pack(pady=10)
+        btn.focus_set()
+
+    # ==========================================
+    # 4. 모델 변경 및 엑셀 로더 (Sorting 시트 B2:B2000 포함)
     # ==========================================
     def on_model_changed(self, event=None):
         self.model_session_id += 1
@@ -734,8 +790,17 @@ class QRScanStationApp:
         def _loader():
             try:
                 wb = openpyxl.load_workbook(filepath, data_only=True)
-                ws = wb.active
 
+                # Sorting 시트 B2:B2000 로드
+                self.sorting_list_by_model[model_name].clear()
+                if "sorting" in wb.sheetnames:
+                    ws_sort = wb["sorting"]
+                    for r in range(2, 2001):
+                        cell_v = ws_sort.cell(row=r, column=2).value
+                        if cell_v:
+                            self.sorting_list_by_model[model_name].add(str(cell_v).strip())
+
+                ws = wb.active
                 rows_to_insert = []
                 target_upper = target_code.upper()
                 last_label = ""
@@ -817,7 +882,7 @@ class QRScanStationApp:
         threading.Thread(target=_loader, daemon=True).start()
 
     # ==========================================
-    # 5. 스캔 판정 로직
+    # 5. 스캔 판정 및 Sorting / 중복 분기
     # ==========================================
     def process_scan(self, raw_code):
         if self.auto_submit_timer:
@@ -829,6 +894,9 @@ class QRScanStationApp:
         self.global_scan_buffer.clear()
 
         if not raw_code:
+            return
+
+        if self.active_popup:
             return
 
         if self.manager_label_popup:
@@ -875,6 +943,7 @@ class QRScanStationApp:
         is_label_qr = (raw_code.count(';') >= 3)
         self.lbl_last_scan.config(text=f"{self.t('last_scan')}: {raw_code}")
 
+        # ---------------- [검증 1] 모델 코드 불일치 NG ----------------
         if scanned_prefix != target_code:
             self.set_status("NG", "#dc3545", "#3a1c1f")
             hint_model = CODE_TO_MODEL.get(scanned_prefix, "Unknown")
@@ -885,6 +954,13 @@ class QRScanStationApp:
             )
             return
 
+        # ---------------- [신규 검증] Sorting 필요 제품 체크 ----------------
+        if not is_label_qr and raw_code in self.sorting_list_by_model[curr_model]:
+            self.set_status("SORTING", "#f59f00", "#3d2716")
+            self.open_sorting_popup(raw_code)
+            return
+
+        # ---------------- [검증 2] Label QR 전용 검증 ----------------
         if is_label_qr:
             if raw_code in self.scanned_label_by_model[curr_model]:
                 self.set_status("Label QR NG", "#dc3545", "#3a1c1f")
@@ -911,6 +987,7 @@ class QRScanStationApp:
                 )
                 return
 
+        # ---------------- [검증 3] 단품 QR 전용 체크 ----------------
         if not is_label_qr:
             if len(self.pending_items) >= MAX_ITEMS_PER_BOX:
                 self.set_status("NG", "#dc3545", "#3a1c1f")
@@ -1299,6 +1376,7 @@ class QRScanStationApp:
         dialog.protocol("WM_DELETE_WINDOW", lambda: None)
 
         self.center_popup(dialog, 520, 320)
+        self.active_popup = dialog
 
         tk.Label(dialog, text=msg, font=("맑은 고딕", 11), bg=header_bg, fg=header_fg, justify=tk.LEFT).pack(pady=15)
 
@@ -1314,6 +1392,7 @@ class QRScanStationApp:
             if pw_entry.get() == self.admin_password:
                 dialog.grab_release()
                 dialog.destroy()
+                self.active_popup = None
                 self.set_status("READY", "#adb5bd", "#2a2e37")
                 self.scan_entry.focus_set()
             else:
@@ -1390,6 +1469,11 @@ class QRScanStationApp:
             ws.column_dimensions['F'].width = 14
             ws.column_dimensions['G'].width = 16
 
+            # sorting 시트 자동 기본 생성
+            ws_sort = wb.create_sheet(title="sorting")
+            ws_sort.cell(row=1, column=2, value="Sorting 대상 DMC Code")
+            ws_sort.column_dimensions['B'].width = 35
+
         return wb, ws, filepath
 
     def async_append_single_item(self, model_name, item):
@@ -1457,5 +1541,5 @@ class QRScanStationApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = QRScanStationApp(root)
+    app = QRScanStationFrontApp(root)
     root.mainloop()
