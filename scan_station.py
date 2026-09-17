@@ -2,6 +2,8 @@ import os
 import sys
 import json
 import time
+import glob
+import ctypes
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -15,11 +17,11 @@ except ImportError:
     winsound = None
 
 # ==========================================
-# 1. REAR 전용 모델 설정 (S-REAR, R-REAR)
+# 1. FRONT 전용 모델 설정
 # ==========================================
 MODEL_CONFIG = {
-    'S-REAR':  'MPL02914AD',
-    'R-REAR':  'MPL02925AD'
+    'S-FRONT': 'MPL02916AD',
+    'R-FRONT': 'MPL02926AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
@@ -32,12 +34,29 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
-COUNT_FILE = os.path.join(BASE_DIR, "counts_rear.json")
+COUNT_FILE = os.path.join(BASE_DIR, "counts_front.json")
 
-# 다국어 번역 팩 (한국어 / English / Polski)
+def set_file_hidden(filepath):
+    """윈도우 파일 숨김 속성 부여"""
+    try:
+        if os.name == 'nt' and os.path.exists(filepath):
+            FILE_ATTRIBUTE_HIDDEN = 0x02
+            ctypes.windll.kernel32.SetFileAttributesW(str(filepath), FILE_ATTRIBUTE_HIDDEN)
+    except Exception as e:
+        print(f"[숨김 속성 부여 실패]: {e}")
+
+def get_quarter_filename(model_name, dt=None):
+    """3개월 분기별 파일명 생성 (예: Y26_3Q_R_FRONT.xlsx)"""
+    if dt is None:
+        dt = datetime.now()
+    year_2d = dt.strftime("%y")
+    quarter = (dt.month - 1) // 3 + 1
+    safe_model = model_name.replace('-', '_')
+    return f"Y{year_2d}_{quarter}Q_{safe_model}.xlsx"
+
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -63,7 +82,6 @@ LANG_PACK = {
         "box_complete": "[박스 묶음 완료: {count}건]",
         "dup_scan_tag": "[중복 스캔]",
         "sorting_title": "⚠️ Sorting 필요 제품 경고",
-        "sorting_msg": "[알림: Sorting 필요 제품]\n\n해당 제품은 Sorting 대상 리스트에 등록되어 있습니다.\n\n바코드를 별도로 격리한 뒤 [Enter] 키를 누르세요.",
         "ng_model_title": "⚠️ NG - 모델 불일치",
         "ng_model_msg": "[NG: 선택 모델과 바코드 코드가 일치하지 않습니다]\n\n현재 선택 모델: {model} ({target})\n스캔된 코드 접두: {prefix}\n참고: 스캔된 코드는 [{hint}] 전용 코드입니다.\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
         "ng_label_dup_title": "⚠️ Label QR NG - 중복 스캔",
@@ -85,7 +103,7 @@ LANG_PACK = {
         "pw_err": "비밀번호가 올바르지 않습니다."
     },
     "English": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Password Setting",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -111,7 +129,6 @@ LANG_PACK = {
         "box_complete": "[Box Grouping Done: {count} pcs]",
         "dup_scan_tag": "[Duplicate Scan]",
         "sorting_title": "⚠️ Sorting Required Alert",
-        "sorting_msg": "[Alert: Sorting Required Product]\n\nThis product is in the Sorting list.\n\nIsolate the part and press [Enter] to continue.",
         "ng_model_title": "⚠️ NG - Model Mismatch",
         "ng_model_msg": "[NG: Scanned barcode does not match selected model]\n\nSelected Model: {model} ({target})\nScanned Prefix: {prefix}\nRef: Scanned code belongs to [{hint}].\n\nEnter 6-digit Admin Password to unlock.",
         "ng_label_dup_title": "⚠️ Label QR NG - Duplicate Label",
@@ -133,7 +150,7 @@ LANG_PACK = {
         "pw_err": "Incorrect Password."
     },
     "Polski": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Ustawienie hasła",
         "tab_scan": "  Skan QR  ",
         "tab_recode": "  Re-code  ",
@@ -159,7 +176,6 @@ LANG_PACK = {
         "box_complete": "[Pakiet ukończony: {count} szt.]",
         "dup_scan_tag": "[Duplikat skanu]",
         "sorting_title": "⚠️ Wymagane sortowanie",
-        "sorting_msg": "[Uwaga: Wymagane sortowanie produktu]\n\nTen produkt znajduje się na liście sortowania.\n\nOdizoluj część i naciśnij [Enter], aby kontynuować.",
         "ng_model_title": "⚠️ NG - Niezgodność modelu",
         "ng_model_msg": "[NG: Zeskanowany kod nie pasuje do wybranego modelu]\n\nWybrany model: {model} ({target})\nPrefiks kodu: {prefix}\nUwaga: Ten kod należy do [{hint}].\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
         "ng_label_dup_title": "⚠️ Label QR NG - Duplikat etykiety",
@@ -195,13 +211,13 @@ COLOR_NG = "#dc3545"
 class QRScanStationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION [REAR]")
+        self.root.title("QR SCAN STATION [FRONT]")
         self.root.geometry("1340x800")
         self.root.minsize(1200, 720)
         self.root.configure(bg=BG_MAIN)
 
         self.current_lang = tk.StringVar(value="한국어")
-        self.current_model = tk.StringVar(value='S-REAR')  # REAR 기본 모델 지정
+        self.current_model = tk.StringVar(value='S-FRONT')
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
@@ -240,8 +256,8 @@ class QRScanStationApp:
         def _beep():
             if winsound:
                 for _ in range(3):
-                    winsound.Beep(1000, 400)
-                    time.sleep(0.1)
+                    winsound.Beep(1000, 350)
+                    time.sleep(0.08)
         threading.Thread(target=_beep, daemon=True).start()
 
     def load_model_counts(self):
@@ -305,7 +321,7 @@ class QRScanStationApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION  [REAR]", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="QR  SCAN  STATION  [FRONT]", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -757,7 +773,7 @@ class QRScanStationApp:
         btn.focus_set()
 
     # ==========================================
-    # 4. 모델 변경 및 엑셀 로더 (Sorting 시트 B2:B2000 포함)
+    # 4. 모델 변경 및 분기별 엑셀 로더
     # ==========================================
     def on_model_changed(self, event=None):
         self.model_session_id += 1
@@ -777,85 +793,98 @@ class QRScanStationApp:
         self.load_history_from_excel(model, target_code, current_session)
         self.scan_entry.focus_set()
 
+    def get_all_model_files(self, model_name):
+        """해당 모델과 관련된 모든 분기 엑셀 파일 목록 반환"""
+        safe_model = model_name.replace('-', '_')
+        pattern = os.path.join(BASE_DIR, f"Y*_*Q_{safe_model}.xlsx")
+        files = glob.glob(pattern)
+        # 구버전 파일(R-FRONT.xlsx 등) 호환성 유지
+        old_file = os.path.join(BASE_DIR, f"{model_name}.xlsx")
+        if os.path.exists(old_file) and old_file not in files:
+            files.append(old_file)
+        files.sort()
+        return files
+
     def load_history_from_excel(self, model_name, target_code, session_id):
         self.tree.delete(*self.tree.get_children())
 
-        filepath = os.path.join(BASE_DIR, f"{model_name}.xlsx")
-        if not os.path.exists(filepath):
+        files = self.get_all_model_files(model_name)
+        if not files:
             return
 
         def _loader():
             try:
-                wb = openpyxl.load_workbook(filepath, data_only=True)
-
-                self.sorting_list_by_model[model_name].clear()
-                if "sorting" in wb.sheetnames:
-                    ws_sort = wb["sorting"]
-                    for r in range(2, 2001):
-                        cell_v = ws_sort.cell(row=r, column=2).value
-                        if cell_v:
-                            self.sorting_list_by_model[model_name].add(str(cell_v).strip())
-
-                ws = wb.active
                 rows_to_insert = []
                 target_upper = target_code.upper()
                 last_label = ""
                 loaded_pending = []
+                self.sorting_list_by_model[model_name].clear()
 
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    if not row or len(row) < 6:
-                        continue
-                    lbl_val = row[0]
-                    box_time = row[1]
-                    seq_val = row[2]
-                    dmc_val = row[3]
-                    dmc_time = row[4]
-                    res = row[5]
-                    content = row[6] if len(row) >= 7 and row[6] else ""
+                for filepath in files:
+                    wb = openpyxl.load_workbook(filepath, data_only=True)
 
-                    lbl_str = str(lbl_val).strip() if lbl_val and str(lbl_val).strip() != "-" else ""
-                    dmc_str = str(dmc_val).strip() if dmc_val and str(dmc_val).strip() != "-" else ""
-                    res_str = str(res).strip() if res else "OK"
-                    content_str = str(content).strip() if content else ""
+                    if "sorting" in wb.sheetnames:
+                        ws_sort = wb["sorting"]
+                        for r in range(2, 2001):
+                            cell_v = ws_sort.cell(row=r, column=2).value
+                            if cell_v:
+                                self.sorting_list_by_model[model_name].add(str(cell_v).strip())
 
-                    if seq_val == "HEADER" or dmc_str.startswith("[박스 묶음 완료") or "Group" in dmc_str or "Pakiet" in dmc_str:
-                        t_parts = str(box_time).split()
+                    ws = wb.active
+                    for row in ws.iter_rows(min_row=2, values_only=True):
+                        if not row or len(row) < 6:
+                            continue
+                        lbl_val = row[0]
+                        box_time = row[1]
+                        seq_val = row[2]
+                        dmc_val = row[3]
+                        dmc_time = row[4]
+                        res = row[5]
+                        content = row[6] if len(row) >= 7 and row[6] else ""
+
+                        lbl_str = str(lbl_val).strip() if lbl_val and str(lbl_val).strip() != "-" else ""
+                        dmc_str = str(dmc_val).strip() if dmc_val and str(dmc_val).strip() != "-" else ""
+                        res_str = str(res).strip() if res else "OK"
+                        content_str = str(content).strip() if content else ""
+
+                        if seq_val == "HEADER" or dmc_str.startswith("[박스 묶음 완료") or "Group" in dmc_str or "Pakiet" in dmc_str:
+                            t_parts = str(box_time).split()
+                            day_val = t_parts[0] if len(t_parts) > 0 else ""
+                            time_val = t_parts[1] if len(t_parts) > 1 else ""
+                            rows_to_insert.append((day_val, time_val, lbl_str, dmc_str, res_str, content_str))
+                            if lbl_str:
+                                self.scanned_label_by_model[model_name].add(lbl_str)
+                            last_label = ""
+                            loaded_pending.clear()
+                            continue
+
+                        ts_str = str(dmc_time if dmc_time and str(dmc_time).strip() != "-" else box_time)
+                        if not ts_str or ts_str == "-":
+                            continue
+
+                        t_parts = ts_str.split()
                         day_val = t_parts[0] if len(t_parts) > 0 else ""
                         time_val = t_parts[1] if len(t_parts) > 1 else ""
-                        rows_to_insert.append((day_val, time_val, lbl_str, dmc_str, res_str, content_str))
+
+                        if not dmc_str.upper().startswith(target_upper):
+                            continue
+
                         if lbl_str:
-                            self.scanned_label_by_model[model_name].add(lbl_str)
-                        last_label = ""
-                        loaded_pending.clear()
-                        continue
+                            last_label = lbl_str
+                            final_label = lbl_str
+                        else:
+                            final_label = ""
+                            if res_str == "OK":
+                                loaded_pending.append({
+                                    "day": day_val, "time": time_val, "code": dmc_str, "result": "OK"
+                                })
 
-                    ts_str = str(dmc_time if dmc_time and str(dmc_time).strip() != "-" else box_time)
-                    if not ts_str or ts_str == "-":
-                        continue
+                        if final_label and final_label.upper().startswith(target_upper):
+                            self.scanned_label_by_model[model_name].add(final_label)
+                        if dmc_str and dmc_str.upper().startswith(target_upper):
+                            self.scanned_history_by_model[model_name].add(dmc_str)
 
-                    t_parts = ts_str.split()
-                    day_val = t_parts[0] if len(t_parts) > 0 else ""
-                    time_val = t_parts[1] if len(t_parts) > 1 else ""
-
-                    if not dmc_str.upper().startswith(target_upper):
-                        continue
-
-                    if lbl_str:
-                        last_label = lbl_str
-                        final_label = lbl_str
-                    else:
-                        final_label = ""
-                        if res_str == "OK":
-                            loaded_pending.append({
-                                "day": day_val, "time": time_val, "code": dmc_str, "result": "OK"
-                            })
-
-                    if final_label and final_label.upper().startswith(target_upper):
-                        self.scanned_label_by_model[model_name].add(final_label)
-                    if dmc_str and dmc_str.upper().startswith(target_upper):
-                        self.scanned_history_by_model[model_name].add(dmc_str)
-
-                    rows_to_insert.append((day_val, time_val, final_label, dmc_str, res_str, content_str))
+                        rows_to_insert.append((day_val, time_val, final_label, dmc_str, res_str, content_str))
 
                 if session_id != self.model_session_id:
                     return
@@ -878,7 +907,7 @@ class QRScanStationApp:
         threading.Thread(target=_loader, daemon=True).start()
 
     # ==========================================
-    # 5. 스캔 판정 및 Sorting / 중복 분기
+    # 5. 스캔 판정 로직
     # ==========================================
     def process_scan(self, raw_code):
         if self.auto_submit_timer:
@@ -950,13 +979,13 @@ class QRScanStationApp:
             )
             return
 
-        # ---------------- [신규 검증] Sorting 필요 제품 체크 ----------------
+        # ---------------- [검증 2] Sorting 필요 제품 체크 ----------------
         if not is_label_qr and raw_code in self.sorting_list_by_model[curr_model]:
             self.set_status("SORTING", "#f59f00", "#3d2716")
             self.open_sorting_popup(raw_code)
             return
 
-        # ---------------- [검증 2] Label QR 전용 검증 ----------------
+        # ---------------- [검증 3] Label QR 전용 검증 ----------------
         if is_label_qr:
             if raw_code in self.scanned_label_by_model[curr_model]:
                 self.set_status("Label QR NG", "#dc3545", "#3a1c1f")
@@ -983,7 +1012,7 @@ class QRScanStationApp:
                 )
                 return
 
-        # ---------------- [검증 3] 단품 QR 전용 체크 ----------------
+        # ---------------- [검증 4] 단품 QR 전용 체크 ----------------
         if not is_label_qr:
             if len(self.pending_items) >= MAX_ITEMS_PER_BOX:
                 self.set_status("NG", "#dc3545", "#3a1c1f")
@@ -1124,11 +1153,117 @@ class QRScanStationApp:
 
         self.scan_entry.focus_set()
 
+    # ==========================================
+    # 6. 분기별 숨김 엑셀 워크북 저장 로직
+    # ==========================================
+    def get_or_create_workbook(self, model_name, dt=None):
+        filename = get_quarter_filename(model_name, dt)
+        filepath = os.path.join(BASE_DIR, filename)
+        is_new = not os.path.exists(filepath)
+
+        if not is_new:
+            wb = openpyxl.load_workbook(filepath)
+            ws = wb.active
+        else:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "스캔실적"
+
+            headers = ["Label QR (Box/Lot)", "Label 스캔일시", "단품 순번", "단품 DMC", "단품 스캔일시", "판정", "Content"]
+            ws.append(headers)
+
+            header_fill = PatternFill(start_color="1F242D", end_color="1F242D", fill_type="solid")
+            header_font = Font(name="맑은 고딕", size=11, bold=True, color="FFFFFF")
+
+            for col in range(1, 8):
+                cell = ws.cell(row=1, column=col)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+            ws.column_dimensions['A'].width = 46
+            ws.column_dimensions['B'].width = 20
+            ws.column_dimensions['C'].width = 12
+            ws.column_dimensions['D'].width = 34
+            ws.column_dimensions['E'].width = 20
+            ws.column_dimensions['F'].width = 14
+            ws.column_dimensions['G'].width = 16
+
+            ws_sort = wb.create_sheet(title="sorting")
+            ws_sort.cell(row=1, column=2, value="Sorting 대상 DMC Code")
+            ws_sort.column_dimensions['B'].width = 35
+
+        return wb, ws, filepath, is_new
+
+    def save_and_hide(self, wb, filepath, is_new):
+        wb.save(filepath)
+        if is_new:
+            set_file_hidden(filepath)
+
+    def async_append_single_item(self, model_name, item):
+        with self.file_lock:
+            try:
+                wb, ws, filepath, is_new = self.get_or_create_workbook(model_name)
+
+                thin_border = Border(
+                    left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
+                    top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
+                )
+                ok_fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+
+                start_row = ws.max_row + 1
+                ts_full = f"{item['day']} {item['time']}"
+                row_data = ["-", "-", "-", item["code"], ts_full, item["result"], ""]
+                ws.append(row_data)
+
+                for col in range(1, 8):
+                    c = ws.cell(row=start_row, column=col)
+                    c.border = thin_border
+                    c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6, 7] else "left", vertical="center")
+                    if col == 6:
+                        c.fill = ok_fill
+
+                self.save_and_hide(wb, filepath, is_new)
+            except Exception as e:
+                print(f"[단품 즉시 저장 실패]: {e}")
+
+    def async_finalize_excel_group(self, model_name, box_qr, box_time, items, header_text):
+        with self.file_lock:
+            try:
+                wb, ws, filepath, is_new = self.get_or_create_workbook(model_name)
+
+                item_codes = set(it["code"] for it in items)
+
+                for row in reversed(list(ws.iter_rows(min_row=2, max_row=ws.max_row))):
+                    dmc_val = str(row[3].value).strip() if row[3].value else ""
+                    if dmc_val in item_codes:
+                        row[0].value = box_qr
+                        row[1].value = box_time
+                        item_codes.remove(dmc_val)
+                    if not item_codes:
+                        break
+
+                thin_border = Border(
+                    left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
+                    top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
+                )
+
+                header_row = [box_qr, box_time, "HEADER", header_text, box_time, "OK", ""]
+                ws.append(header_row)
+                h_row_idx = ws.max_row
+                for col in range(1, 8):
+                    c = ws.cell(row=h_row_idx, column=col)
+                    c.border = thin_border
+                    c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6, 7] else "left", vertical="center")
+
+                self.save_and_hide(wb, filepath, is_new)
+            except Exception as e:
+                print(f"[그룹핑 저장 실패]: {e}")
+
     def async_update_manager_label(self, model_name, dmc_code, label_qr, ts_full):
         with self.file_lock:
             try:
-                filename = f"{model_name}.xlsx"
-                wb, ws, filepath = self.get_or_create_workbook(filename)
+                wb, ws, filepath, is_new = self.get_or_create_workbook(model_name)
 
                 for row in reversed(list(ws.iter_rows(min_row=2, max_row=ws.max_row))):
                     d_val = str(row[3].value).strip() if row[3].value else ""
@@ -1137,59 +1272,77 @@ class QRScanStationApp:
                         row[1].value = ts_full
                         break
 
-                wb.save(filepath)
+                self.save_and_hide(wb, filepath, is_new)
             except Exception as e:
                 print(f"[매니저 라벨 엑셀 갱신 실패]: {e}")
 
     def async_handle_dmc_duplicate_precise(self, model_name, raw_code, day_str, time_str, matched_label, dup_text):
         with self.file_lock:
             try:
-                filename = f"{model_name}.xlsx"
-                wb, ws, filepath = self.get_or_create_workbook(filename)
+                # 모든 분기 엑셀 파일에서 원본 탐색 및 NG 처리
+                files = self.get_all_model_files(model_name)
+                current_quarter_file = os.path.join(BASE_DIR, get_quarter_filename(model_name))
+                if current_quarter_file not in files:
+                    files.append(current_quarter_file)
 
+                ng_fill = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")
+                ng_font = Font(name="맑은 고딕", size=10, bold=True, color="C00000")
                 thin_border = Border(
                     left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
                     top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
                 )
-                ng_fill = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")
-                ng_font = Font(name="맑은 고딕", size=10, bold=True, color="C00000")
 
-                for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-                    lbl_cell = row[0]
-                    seq_cell = row[2]
-                    dmc_cell = row[3]
-                    res_cell = row[5]
-                    content_cell = row[6] if len(row) >= 7 else None
+                for f_path in files:
+                    if not os.path.exists(f_path):
+                        continue
+                    wb = openpyxl.load_workbook(f_path)
+                    ws = wb.active
+                    modified = False
 
-                    dmc_val = str(dmc_cell.value).strip() if dmc_cell.value else ""
-                    lbl_val = str(lbl_cell.value).strip() if lbl_cell.value else ""
+                    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+                        lbl_cell = row[0]
+                        seq_cell = row[2]
+                        dmc_cell = row[3]
+                        res_cell = row[5]
+                        content_cell = row[6] if len(row) >= 7 else None
 
-                    if dmc_val == raw_code and res_cell.value != "NG":
-                        res_cell.value = "NG"
-                        if content_cell:
-                            content_cell.value = dup_text
-                        for c in row[:7]:
-                            c.fill = ng_fill
-                            c.font = ng_font
+                        dmc_val = str(dmc_cell.value).strip() if dmc_cell.value else ""
+                        lbl_val = str(lbl_cell.value).strip() if lbl_cell.value else ""
 
-                    elif matched_label and lbl_val == matched_label and (str(seq_cell.value) == "HEADER" or "[" in dmc_val):
-                        res_cell.value = "NG"
-                        for c in row[:7]:
-                            c.fill = ng_fill
-                            c.font = ng_font
+                        if dmc_val == raw_code and res_cell.value != "NG":
+                            res_cell.value = "NG"
+                            if content_cell:
+                                content_cell.value = dup_text
+                            for c in row[:7]:
+                                c.fill = ng_fill
+                                c.font = ng_font
+                            modified = True
 
+                        elif matched_label and lbl_val == matched_label and (str(seq_cell.value) == "HEADER" or "[" in dmc_val):
+                            res_cell.value = "NG"
+                            for c in row[:7]:
+                                c.fill = ng_fill
+                                c.font = ng_font
+                            modified = True
+
+                    if modified:
+                        wb.save(f_path)
+
+                # 현재 분기 엑셀 파일에 신규 중복 NG 행 기록
+                wb_cur, ws_cur, fp_cur, is_new = self.get_or_create_workbook(model_name)
                 ts_full = f"{day_str} {time_str}"
                 row_data = ["-", "-", "-", raw_code, ts_full, "NG", dup_text]
-                ws.append(row_data)
-                h_idx = ws.max_row
+                ws_cur.append(row_data)
+                h_idx = ws_cur.max_row
                 for col in range(1, 8):
-                    c = ws.cell(row=h_idx, column=col)
+                    c = ws_cur.cell(row=h_idx, column=col)
                     c.border = thin_border
                     c.fill = ng_fill
                     c.font = ng_font
                     c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6, 7] else "left", vertical="center")
 
-                wb.save(filepath)
+                self.save_and_hide(wb_cur, fp_cur, is_new)
+
             except Exception as e:
                 print(f"[정밀 중복 엑셀 오류]: {e}")
 
@@ -1239,9 +1392,9 @@ class QRScanStationApp:
         self.tree_recode.delete(*self.tree_recode.get_children())
         model = self.current_model.get()
         target_upper = MODEL_CONFIG[model].upper()
-        filepath = os.path.join(BASE_DIR, f"{model}.xlsx")
+        files = self.get_all_model_files(model)
 
-        if not os.path.exists(filepath):
+        if not files:
             return
 
         start_day = self.entry_start_day.get().strip()
@@ -1250,50 +1403,50 @@ class QRScanStationApp:
         end_time = self.entry_end_time.get().strip()
 
         try:
-            wb = openpyxl.load_workbook(filepath, data_only=True)
-            ws = wb.active
-
             matched = []
-            last_known_label_qr = ""
+            for filepath in files:
+                wb = openpyxl.load_workbook(filepath, data_only=True)
+                ws = wb.active
+                last_known_label_qr = ""
 
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                if not row or len(row) < 6:
-                    continue
-                label_qr = row[0]
-                box_time = row[1]
-                dmc_code = row[3]
-                dmc_time = row[4]
-                res = row[5]
-                content = row[6] if len(row) >= 7 and row[6] else ""
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row or len(row) < 6:
+                        continue
+                    label_qr = row[0]
+                    box_time = row[1]
+                    dmc_code = row[3]
+                    dmc_time = row[4]
+                    res = row[5]
+                    content = row[6] if len(row) >= 7 and row[6] else ""
 
-                if label_qr and str(label_qr).strip() != "-":
-                    last_known_label_qr = str(label_qr).strip()
+                    if label_qr and str(label_qr).strip() != "-":
+                        last_known_label_qr = str(label_qr).strip()
 
-                ts_str = str(dmc_time if dmc_time and dmc_time != "-" else box_time)
-                if not ts_str or ts_str == "-":
-                    continue
+                    ts_str = str(dmc_time if dmc_time and dmc_time != "-" else box_time)
+                    if not ts_str or ts_str == "-":
+                        continue
 
-                parts = ts_str.split()
-                r_day = parts[0] if len(parts) > 0 else ""
-                r_time = parts[1] if len(parts) > 1 else "00:00:00"
+                    parts = ts_str.split()
+                    r_day = parts[0] if len(parts) > 0 else ""
+                    r_time = parts[1] if len(parts) > 1 else "00:00:00"
 
-                if start_day and r_day < start_day:
-                    continue
-                if end_day and r_day > end_day:
-                    continue
-                if start_time and r_time < start_time:
-                    continue
-                if end_time and r_time > end_time:
-                    continue
+                    if start_day and r_day < start_day:
+                        continue
+                    if end_day and r_day > end_day:
+                        continue
+                    if start_time and r_time < start_time:
+                        continue
+                    if end_time and r_time > end_time:
+                        continue
 
-                lbl_val = last_known_label_qr
-                dmc_val = "" if not dmc_code or dmc_code == "-" else str(dmc_code)
-                content_val = str(content).strip() if content else ""
+                    lbl_val = last_known_label_qr
+                    dmc_val = "" if not dmc_code or dmc_code == "-" else str(dmc_code)
+                    content_val = str(content).strip() if content else ""
 
-                if not (dmc_val.upper().startswith(target_upper) or lbl_val.upper().startswith(target_upper)):
-                    continue
+                    if not (dmc_val.upper().startswith(target_upper) or lbl_val.upper().startswith(target_upper)):
+                        continue
 
-                matched.append((r_day, r_time, lbl_val, dmc_val, str(res), content_val))
+                    matched.append((r_day, r_time, lbl_val, dmc_val, str(res), content_val))
 
             for m in reversed(matched):
                 tag = "ng_row" if m[4] == "NG" else ""
@@ -1362,6 +1515,9 @@ class QRScanStationApp:
             messagebox.showerror("Error", str(e))
 
     def open_lock_popup(self, title_text, msg, header_bg, header_fg):
+        # 모든 NG 팝업에 경고 알람음 재생
+        self.play_alarm_sound()
+
         dialog = tk.Toplevel(self.root)
         dialog.title(title_text)
         dialog.resizable(False, False)
@@ -1434,104 +1590,6 @@ class QRScanStationApp:
 
         tk.Button(win, text=self.t("unlock_btn"), command=apply_pw, bg="#2b5278", fg="#ffffff",
                   relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=4).pack(pady=15)
-
-    def get_or_create_workbook(self, filename):
-        filepath = os.path.join(BASE_DIR, filename)
-        if os.path.exists(filepath):
-            wb = openpyxl.load_workbook(filepath)
-            ws = wb.active
-        else:
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "스캔실적"
-
-            headers = ["Label QR (Box/Lot)", "Label 스캔일시", "단품 순번", "단품 DMC", "단품 스캔일시", "판정", "Content"]
-            ws.append(headers)
-
-            header_fill = PatternFill(start_color="1F242D", end_color="1F242D", fill_type="solid")
-            header_font = Font(name="맑은 고딕", size=11, bold=True, color="FFFFFF")
-
-            for col in range(1, 8):
-                cell = ws.cell(row=1, column=col)
-                cell.fill = header_fill
-                cell.font = header_font
-                cell.alignment = Alignment(horizontal="center", vertical="center")
-
-            ws.column_dimensions['A'].width = 46
-            ws.column_dimensions['B'].width = 20
-            ws.column_dimensions['C'].width = 12
-            ws.column_dimensions['D'].width = 34
-            ws.column_dimensions['E'].width = 20
-            ws.column_dimensions['F'].width = 14
-            ws.column_dimensions['G'].width = 16
-
-            ws_sort = wb.create_sheet(title="sorting")
-            ws_sort.cell(row=1, column=2, value="Sorting 대상 DMC Code")
-            ws_sort.column_dimensions['B'].width = 35
-
-        return wb, ws, filepath
-
-    def async_append_single_item(self, model_name, item):
-        with self.file_lock:
-            try:
-                filename = f"{model_name}.xlsx"
-                wb, ws, filepath = self.get_or_create_workbook(filename)
-
-                thin_border = Border(
-                    left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
-                    top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
-                )
-                ok_fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
-
-                start_row = ws.max_row + 1
-                ts_full = f"{item['day']} {item['time']}"
-                row_data = ["-", "-", "-", item["code"], ts_full, item["result"], ""]
-                ws.append(row_data)
-
-                for col in range(1, 8):
-                    c = ws.cell(row=start_row, column=col)
-                    c.border = thin_border
-                    c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6, 7] else "left", vertical="center")
-                    if col == 6:
-                        c.fill = ok_fill
-
-                wb.save(filepath)
-            except Exception as e:
-                print(f"[단품 즉시 저장 실패]: {e}")
-
-    def async_finalize_excel_group(self, model_name, box_qr, box_time, items, header_text):
-        with self.file_lock:
-            try:
-                filename = f"{model_name}.xlsx"
-                wb, ws, filepath = self.get_or_create_workbook(filename)
-
-                item_codes = set(it["code"] for it in items)
-
-                for row in reversed(list(ws.iter_rows(min_row=2, max_row=ws.max_row))):
-                    dmc_val = str(row[3].value).strip() if row[3].value else ""
-                    if dmc_val in item_codes:
-                        row[0].value = box_qr
-                        row[1].value = box_time
-                        item_codes.remove(dmc_val)
-                    if not item_codes:
-                        break
-
-                thin_border = Border(
-                    left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
-                    top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
-                )
-
-                header_row = [box_qr, box_time, "HEADER", header_text, box_time, "OK", ""]
-                ws.append(header_row)
-                h_row_idx = ws.max_row
-                for col in range(1, 8):
-                    c = ws.cell(row=h_row_idx, column=col)
-                    c.border = thin_border
-                    c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6, 7] else "left", vertical="center")
-
-                wb.save(filepath)
-            except Exception as e:
-                print(f"[그룹핑 저장 실패]: {e}")
 
 
 if __name__ == "__main__":
