@@ -15,11 +15,11 @@ except ImportError:
     winsound = None
 
 # ==========================================
-# 1. REAR 전용 모델 설정 (S-REAR, R-REAR)
+# 1. FRONT 전용 모델 설정
 # ==========================================
 MODEL_CONFIG = {
-    'S-REAR':  'MPL02914AD',
-    'R-REAR':  'MPL02925AD'
+    'S-FRONT': 'MPL02916AD',
+    'R-FRONT': 'MPL02926AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
@@ -32,11 +32,11 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
-COUNT_FILE = os.path.join(BASE_DIR, "counts_rear.json")
+COUNT_FILE = os.path.join(BASE_DIR, "counts_front.json")
 
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -84,7 +84,7 @@ LANG_PACK = {
         "pw_err": "비밀번호가 올바르지 않습니다."
     },
     "English": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Password Setting",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -132,7 +132,7 @@ LANG_PACK = {
         "pw_err": "Incorrect Password."
     },
     "Polski": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Ustawienie hasła",
         "tab_scan": "  Skan QR  ",
         "tab_recode": "  Re-code  ",
@@ -191,16 +191,16 @@ COLOR_OK = "#28a745"
 COLOR_NG = "#dc3545"
 
 
-class QRScanStationRearApp:
+class QRScanStationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION [REAR]")
+        self.root.title("QR SCAN STATION [FRONT]")
         self.root.geometry("1340x800")
         self.root.minsize(1200, 720)
         self.root.configure(bg=BG_MAIN)
 
         self.current_lang = tk.StringVar(value="한국어")
-        self.current_model = tk.StringVar(value='S-REAR')
+        self.current_model = tk.StringVar(value='S-FRONT')
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
@@ -304,7 +304,7 @@ class QRScanStationRearApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION  [REAR]", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="QR  SCAN  STATION  [FRONT]", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -620,7 +620,7 @@ class QRScanStationRearApp:
     def set_status(self, text, fg_color, bg_color):
         if len(text) <= 2:
             font_size = 46
-        elif len(text) <= 6:
+        elif len(text) <= 7:
             font_size = 36
         elif len(text) <= 11:
             font_size = 30
@@ -755,9 +755,6 @@ class QRScanStationRearApp:
         btn.pack(pady=10)
         btn.focus_set()
 
-    # ==========================================
-    # 4. 모델 변경 및 엑셀 로더 (Sorting 시트 B2:B2000 포함)
-    # ==========================================
     def on_model_changed(self, event=None):
         self.model_session_id += 1
         current_session = self.model_session_id
@@ -876,9 +873,6 @@ class QRScanStationRearApp:
 
         threading.Thread(target=_loader, daemon=True).start()
 
-    # ==========================================
-    # 5. 스캔 판정 및 Sorting / 중복 분기
-    # ==========================================
     def process_scan(self, raw_code):
         if self.auto_submit_timer:
             self.root.after_cancel(self.auto_submit_timer)
@@ -1531,5 +1525,5 @@ class QRScanStationRearApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = QRScanStationFrontApp(root)
+    app = QRScanStationApp(root)
     root.mainloop()
