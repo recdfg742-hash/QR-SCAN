@@ -15,11 +15,11 @@ except ImportError:
     winsound = None
 
 # ==========================================
-# 1. FRONT 전용 모델 설정
+# 1. REAR 전용 모델 설정 (S-REAR, R-REAR)
 # ==========================================
 MODEL_CONFIG = {
-    'S-FRONT': 'MPL02916AD',
-    'R-FRONT': 'MPL02926AD'
+    'S-REAR':  'MPL02914AD',
+    'R-REAR':  'MPL02925AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
@@ -32,11 +32,12 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
-COUNT_FILE = os.path.join(BASE_DIR, "counts_front.json")
+COUNT_FILE = os.path.join(BASE_DIR, "counts_rear.json")
 
+# 다국어 번역 팩 (한국어 / English / Polski)
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -84,7 +85,7 @@ LANG_PACK = {
         "pw_err": "비밀번호가 올바르지 않습니다."
     },
     "English": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ Password Setting",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -132,7 +133,7 @@ LANG_PACK = {
         "pw_err": "Incorrect Password."
     },
     "Polski": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ Ustawienie hasła",
         "tab_scan": "  Skan QR  ",
         "tab_recode": "  Re-code  ",
@@ -194,13 +195,13 @@ COLOR_NG = "#dc3545"
 class QRScanStationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION [FRONT]")
+        self.root.title("QR SCAN STATION [REAR]")
         self.root.geometry("1340x800")
         self.root.minsize(1200, 720)
         self.root.configure(bg=BG_MAIN)
 
         self.current_lang = tk.StringVar(value="한국어")
-        self.current_model = tk.StringVar(value='S-FRONT')
+        self.current_model = tk.StringVar(value='S-REAR')  # REAR 기본 모델 지정
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
@@ -304,7 +305,7 @@ class QRScanStationApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION  [FRONT]", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="QR  SCAN  STATION  [REAR]", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -755,6 +756,9 @@ class QRScanStationApp:
         btn.pack(pady=10)
         btn.focus_set()
 
+    # ==========================================
+    # 4. 모델 변경 및 엑셀 로더 (Sorting 시트 B2:B2000 포함)
+    # ==========================================
     def on_model_changed(self, event=None):
         self.model_session_id += 1
         current_session = self.model_session_id
@@ -873,6 +877,9 @@ class QRScanStationApp:
 
         threading.Thread(target=_loader, daemon=True).start()
 
+    # ==========================================
+    # 5. 스캔 판정 및 Sorting / 중복 분기
+    # ==========================================
     def process_scan(self, raw_code):
         if self.auto_submit_timer:
             self.root.after_cancel(self.auto_submit_timer)
@@ -932,6 +939,7 @@ class QRScanStationApp:
         is_label_qr = (raw_code.count(';') >= 3)
         self.lbl_last_scan.config(text=f"{self.t('last_scan')}: {raw_code}")
 
+        # ---------------- [검증 1] 모델 코드 불일치 NG ----------------
         if scanned_prefix != target_code:
             self.set_status("NG", "#dc3545", "#3a1c1f")
             hint_model = CODE_TO_MODEL.get(scanned_prefix, "Unknown")
@@ -942,11 +950,13 @@ class QRScanStationApp:
             )
             return
 
+        # ---------------- [신규 검증] Sorting 필요 제품 체크 ----------------
         if not is_label_qr and raw_code in self.sorting_list_by_model[curr_model]:
             self.set_status("SORTING", "#f59f00", "#3d2716")
             self.open_sorting_popup(raw_code)
             return
 
+        # ---------------- [검증 2] Label QR 전용 검증 ----------------
         if is_label_qr:
             if raw_code in self.scanned_label_by_model[curr_model]:
                 self.set_status("Label QR NG", "#dc3545", "#3a1c1f")
@@ -973,6 +983,7 @@ class QRScanStationApp:
                 )
                 return
 
+        # ---------------- [검증 3] 단품 QR 전용 체크 ----------------
         if not is_label_qr:
             if len(self.pending_items) >= MAX_ITEMS_PER_BOX:
                 self.set_status("NG", "#dc3545", "#3a1c1f")
