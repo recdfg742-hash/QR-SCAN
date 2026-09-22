@@ -17,11 +17,11 @@ except ImportError:
     winsound = None
 
 # ==========================================
-# 1. FRONT 전용 모델 설정
+# 1. REAR 전용 모델 설정
 # ==========================================
 MODEL_CONFIG = {
-    'S-FRONT': 'MPL02916AD',
-    'R-FRONT': 'MPL02926AD'
+    'S-REAR':  'MPL02914AD',
+    'R-REAR':  'MPL02925AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
@@ -34,7 +34,7 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
-COUNT_FILE = os.path.join(BASE_DIR, "counts_front.json")
+COUNT_FILE = os.path.join(BASE_DIR, "counts_rear.json")
 
 FILE_ATTRIBUTE_NORMAL = 0x80
 FILE_ATTRIBUTE_HIDDEN = 0x02
@@ -63,7 +63,7 @@ def get_quarter_filename(model_name, dt=None):
 
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -107,7 +107,7 @@ LANG_PACK = {
         "pw_err": "비밀번호가 올바르지 않습니다."
     },
     "English": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ Password Setting",
         "tab_scan": "  QR Scan  ",
         "tab_recode": "  Re-code  ",
@@ -151,7 +151,7 @@ LANG_PACK = {
         "pw_err": "Incorrect Password."
     },
     "Polski": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ Ustawienie hasła",
         "tab_scan": "  Skan QR  ",
         "tab_recode": "  Re-code  ",
@@ -209,13 +209,13 @@ COLOR_NG = "#dc3545"
 class QRScanStationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION [FRONT]")
+        self.root.title("QR SCAN STATION [REAR]")
         self.root.geometry("1340x800")
         self.root.minsize(1200, 720)
         self.root.configure(bg=BG_MAIN)
 
         self.current_lang = tk.StringVar(value="한국어")
-        self.current_model = tk.StringVar(value='S-FRONT')
+        self.current_model = tk.StringVar(value='S-REAR')
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
@@ -317,7 +317,7 @@ class QRScanStationApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION  [FRONT]", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="QR  SCAN  STATION  [REAR]", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -928,7 +928,6 @@ class QRScanStationApp:
         # [검증 2] Sorting 필요 제품 체크 (C열 OK 마킹 및 팝업)
         if not is_label_qr and raw_code in self.sorting_list_by_model[curr_model]:
             self.set_status("SORTING", "#f59f00", "#3d2716")
-            # 엑셀 sorting 시트의 C열에 즉시 OK 기입
             self.direct_mark_sorting_ok(curr_model, raw_code)
             self.open_sorting_popup(raw_code)
             return
@@ -1132,7 +1131,6 @@ class QRScanStationApp:
 
         return wb, ws
 
-    # 1. 수정 반영: sorting 시트 B열 매칭 시 C열에 'OK' 표기
     def direct_mark_sorting_ok(self, model_name, raw_code):
         with self.file_lock:
             try:
@@ -1237,6 +1235,25 @@ class QRScanStationApp:
                 hide_file(filepath)
             except Exception as e:
                 print(f"[그룹핑 엑셀 기록 실패]: {e}")
+
+    def direct_update_manager_label(self, model_name, dmc_code, label_qr, ts_full):
+        with self.file_lock:
+            try:
+                filename = get_quarter_filename(model_name)
+                filepath = os.path.join(BASE_DIR, filename)
+                wb, ws = self.open_or_init_workbook(filepath)
+
+                for row in reversed(list(ws.iter_rows(min_row=2, max_row=ws.max_row))):
+                    d_val = str(row[3].value).strip() if row[3].value else ""
+                    if d_val == dmc_code:
+                        row[0].value = label_qr
+                        row[1].value = ts_full
+                        break
+
+                wb.save(filepath)
+                hide_file(filepath)
+            except Exception:
+                pass
 
     def direct_handle_dmc_duplicate(self, model_name, raw_code, day_str, time_str, matched_label, dup_text):
         with self.file_lock:
