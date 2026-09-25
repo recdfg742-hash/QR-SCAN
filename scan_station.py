@@ -17,11 +17,11 @@ except ImportError:
     winsound = None
 
 # ==========================================
-# 1. FRONT 전용 모델 설정
+# 1. REAR 전용 모델 설정
 # ==========================================
 MODEL_CONFIG = {
-    'S-FRONT': 'MPL02916AD',
-    'R-FRONT': 'MPL02926AD'
+    'S-REAR':  'MPL02914AD',
+    'R-REAR':  'MPL02925AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
@@ -35,8 +35,8 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
-COUNT_FILE = os.path.join(BASE_DIR, "counts_front.json")
-STATE_FILE = os.path.join(BASE_DIR, "pallet_state_front.json")
+COUNT_FILE = os.path.join(BASE_DIR, "counts_rear.json")
+STATE_FILE = os.path.join(BASE_DIR, "pallet_state_rear.json")
 
 FILE_ATTRIBUTE_NORMAL = 0x80
 FILE_ATTRIBUTE_HIDDEN = 0x02
@@ -65,7 +65,7 @@ def get_quarter_filename(model_name, dt=None):
 
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
         "tab_grouping": "  Grouping  ",
@@ -124,7 +124,7 @@ LANG_PACK = {
         "pw_err": "비밀번호가 올바르지 않습니다."
     },
     "English": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ Password Setting",
         "tab_scan": "  QR Scan  ",
         "tab_grouping": "  Grouping  ",
@@ -183,7 +183,7 @@ LANG_PACK = {
         "pw_err": "Incorrect Password."
     },
     "Polski": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ Ustawienie hasła",
         "tab_scan": "  Skan QR  ",
         "tab_grouping": "  Grupowanie  ",
@@ -256,13 +256,13 @@ COLOR_NG = "#dc3545"
 class QRScanStationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION [FRONT]")
+        self.root.title("QR SCAN STATION [REAR]")
         self.root.geometry("1420x820")
         self.root.minsize(1240, 740)
         self.root.configure(bg=BG_MAIN)
 
         self.current_lang = tk.StringVar(value="한국어")
-        self.current_model = tk.StringVar(value='S-FRONT')
+        self.current_model = tk.StringVar(value='S-REAR')
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
@@ -389,7 +389,7 @@ class QRScanStationApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION  [FRONT]", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="QR  SCAN  STATION  [REAR]", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -1026,7 +1026,6 @@ class QRScanStationApp:
 
     def get_all_model_files(self, model_name):
         safe_model = model_name.replace('-', '_')
-        # 타 모델(FRONT vs REAR)과 파일명이 섞이지 않도록 정밀 매칭
         pattern = os.path.join(BASE_DIR, f"Y*_*Q_{safe_model}.xlsx")
         files = [f for f in glob.glob(pattern) if f.endswith(f"_{safe_model}.xlsx")]
         old_file = os.path.join(BASE_DIR, f"{model_name}.xlsx")
@@ -1113,7 +1112,7 @@ class QRScanStationApp:
                             loaded_pending.clear()
                             continue
 
-                        ts_str = str(dmc_time if dmc_time and dmc_time != "-" else box_time)
+                        ts_str = str(dmc_time if dmc_time and str(dmc_time).strip() != "-" else box_time)
                         if not ts_str or ts_str == "-":
                             continue
 
@@ -1169,7 +1168,7 @@ class QRScanStationApp:
         threading.Thread(target=_loader, daemon=True).start()
 
     # ==========================================
-    # 5. 스캔 판정 로직 (Pallet QR 모델 검증 및 중복/순서 엄격 제어)
+    # 5. 스캔 판정 로직
     # ==========================================
     def is_pallet_qr(self, code):
         c = code.strip().upper()
@@ -1206,9 +1205,9 @@ class QRScanStationApp:
         # Pallet QR 스캔 처리
         # ----------------------------------------------------
         if self.is_pallet_qr(raw_code):
-            upper_pallet_code = raw_code.upper()  # 1. 무조건 대문자
+            upper_pallet_code = raw_code.upper()
 
-            # 2. 모델 코드 불일치 검증
+            # 모델 코드 불일치 검증
             if target_code not in upper_pallet_code:
                 self.set_status("Pallet NG", "#dc3545", "#3a1c1f")
                 self.open_lock_popup(
@@ -1218,7 +1217,6 @@ class QRScanStationApp:
                 )
                 return
 
-            # 단품 10개 찍는 도중 스캔 불가
             if len(self.pending_items) > 0:
                 self.set_status("Pallet NG", "#dc3545", "#3a1c1f")
                 self.open_lock_popup(
@@ -1231,9 +1229,7 @@ class QRScanStationApp:
             prev_pallet = self.pallet_state[curr_model]["current_pallet"]
             curr_box_count = self.pallet_state[curr_model]["box_count"]
 
-            # 3. 중복 스캔 및 연속 Pallet QR 방지 검증:
-            # - 기존 팔레트가 있는데 박스가 0개인 상태에서 또 팔레트를 찍거나
-            # - 동일한 팔레트 QR을 다시 중복 스캔 시 차단
+            # 중복 및 연속 스캔 검증
             if (prev_pallet and curr_box_count == 0) or (upper_pallet_code in self.scanned_pallet_by_model[curr_model]):
                 self.set_status("Pallet NG", "#dc3545", "#3a1c1f")
                 self.open_lock_popup(
@@ -1800,7 +1796,7 @@ class QRScanStationApp:
                     ws = wb["스캔실적"]
                 else:
                     sheets = [s for s in wb.worksheets if s.title != "sorting"]
-                    ws = sheets[0] if sheets else wb.active
+                    ws = sheets[0] if sheets else wb.create_sheet(title="스캔실적", index=0)
 
                 last_known_label_qr = ""
 
