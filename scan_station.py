@@ -17,11 +17,11 @@ except ImportError:
     winsound = None
 
 # ==========================================
-# 1. FRONT 전용 모델 설정
+# 1. REAR 전용 모델 설정
 # ==========================================
 MODEL_CONFIG = {
-    'S-FRONT': 'MPL02916AD',
-    'R-FRONT': 'MPL02926AD'
+    'S-REAR':  'MPL02914AD',
+    'R-REAR':  'MPL02925AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
@@ -35,8 +35,8 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
-COUNT_FILE = os.path.join(BASE_DIR, "counts_front.json")
-STATE_FILE = os.path.join(BASE_DIR, "pallet_state_front.json")
+COUNT_FILE = os.path.join(BASE_DIR, "counts_rear.json")
+STATE_FILE = os.path.join(BASE_DIR, "pallet_state_rear.json")
 
 FILE_ATTRIBUTE_NORMAL = 0x80
 FILE_ATTRIBUTE_HIDDEN = 0x02
@@ -65,7 +65,7 @@ def get_quarter_filename(model_name, dt=None):
 
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
         "tab_grouping": "  Grouping  ",
@@ -120,7 +120,7 @@ LANG_PACK = {
         "pw_err": "비밀번호가 올바르지 않습니다."
     },
     "English": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ Password Setting",
         "tab_scan": "  QR Scan  ",
         "tab_grouping": "  Grouping  ",
@@ -175,7 +175,7 @@ LANG_PACK = {
         "pw_err": "Incorrect Password."
     },
     "Polski": {
-        "title": "QR SCAN STATION [FRONT]",
+        "title": "QR SCAN STATION [REAR]",
         "pw_setting": "⚙ Ustawienie hasła",
         "tab_scan": "  Skan QR  ",
         "tab_grouping": "  Grupowanie  ",
@@ -244,13 +244,13 @@ COLOR_NG = "#dc3545"
 class QRScanStationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION [FRONT]")
+        self.root.title("QR SCAN STATION [REAR]")
         self.root.geometry("1420x820")
         self.root.minsize(1240, 740)
         self.root.configure(bg=BG_MAIN)
 
         self.current_lang = tk.StringVar(value="한국어")
-        self.current_model = tk.StringVar(value='S-FRONT')
+        self.current_model = tk.StringVar(value='S-REAR')
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
@@ -376,7 +376,7 @@ class QRScanStationApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION  [FRONT]", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="QR  SCAN  STATION  [REAR]", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -603,6 +603,7 @@ class QRScanStationApp:
         scroll_g.pack(side=tk.RIGHT, fill=tk.Y)
 
     def refresh_grouping_tab(self):
+        """DMC 제외, Pallet Start/Done 및 Label QR 박스 완료 행만 모아 역순 표시"""
         self.tree_grouping.delete(*self.tree_grouping.get_children())
         curr_model = self.current_model.get()
         files = self.get_all_model_files(curr_model)
@@ -664,6 +665,7 @@ class QRScanStationApp:
                         d_str = t_parts[0] if len(t_parts) > 0 else ""
                         tm_str = t_parts[1] if len(t_parts) > 1 else ""
 
+                        # 수량 파싱 (예: [Box Grouping Done: 10 pcs])
                         qty_str = "10"
                         if "Done:" in desc_val:
                             try:
@@ -1237,6 +1239,7 @@ class QRScanStationApp:
         # [검증 1] 모델 코드 불일치 NG
         if scanned_prefix != target_code:
             self.set_status("NG", "#dc3545", "#3a1c1f")
+            hint_model = CODE_TO_MODEL.get(scanned_prefix, "Unknown")
             self.open_lock_popup(
                 title_text=self.t("ng_model_title"),
                 msg=self.t("ng_model_msg", model=curr_model, target=target_code, code=raw_code[:12]),
