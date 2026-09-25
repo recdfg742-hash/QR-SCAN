@@ -17,16 +17,17 @@ except ImportError:
     winsound = None
 
 # ==========================================
-# 1. REAR 전용 모델 설정
+# 1. FRONT 전용 모델 설정
 # ==========================================
 MODEL_CONFIG = {
-    'S-REAR':  'MPL02914AD',
-    'R-REAR':  'MPL02925AD'
+    'S-FRONT': 'MPL02916AD',
+    'R-FRONT': 'MPL02926AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
 DEFAULT_PASSWORD = "123456"
 MAX_ITEMS_PER_BOX = 10
+MAX_BOXES_PER_PALLET = 12
 
 def get_base_dir():
     if getattr(sys, 'frozen', False):
@@ -34,7 +35,8 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
-COUNT_FILE = os.path.join(BASE_DIR, "counts_rear.json")
+COUNT_FILE = os.path.join(BASE_DIR, "counts_front.json")
+STATE_FILE = os.path.join(BASE_DIR, "pallet_state_front.json")
 
 FILE_ATTRIBUTE_NORMAL = 0x80
 FILE_ATTRIBUTE_HIDDEN = 0x02
@@ -63,9 +65,10 @@ def get_quarter_filename(model_name, dt=None):
 
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
+        "tab_grouping": "  Grouping  ",
         "tab_recode": "  Re-code  ",
         "model_label": "모델",
         "code_label": "인식코드",
@@ -75,7 +78,11 @@ LANG_PACK = {
         "manager_btn": "MANAGER MODE",
         "manager_btn_on": "MANAGER MODE [ON]",
         "pending_status": "미그룹 스캔 {count}건 – Label QR 대기 중",
+        "pallet_status": "현재 팔레트: {pallet} ({boxes}/{max_b} 박스)",
         "record_header": "{model} 기록",
+        "grouping_header": "{model} Pallet - Label Grouping 현황",
+        "th_pallet": "Pallet Label QR",
+        "th_box_seq": "박스 번호",
         "th_day": "DAY",
         "th_time": "TIME",
         "th_label": "Label QR",
@@ -86,12 +93,12 @@ LANG_PACK = {
         "filter_time": "시간대:",
         "search_btn": "🔍 검색",
         "save_btn": "💾 Save (엑셀 저장)",
-        "box_complete": "[박스 묶음 완료: {count}건]",
+        "box_complete": "[Box Grouping Done: {count} pcs]",
         "dup_scan_tag": "[중복 스캔]",
         "sorting_title": "⚠️ Sorting 필요 제품 경고",
         "sorting_msg": "[알림: Sorting 필요 제품]\n\nDMC Code: {code}\n\n해당 제품은 Sorting 대상 리스트에 등록되어 있습니다.\n바코드를 별도로 격리한 뒤 [Enter] 키를 누르세요.",
         "ng_model_title": "⚠️ NG - 모델 불일치",
-        "ng_model_msg": "[NG: 선택 모델과 바코드 코드가 일치하지 않습니다]\n\n현재 선택 모델: {model} ({target})\n스캔된 코드 접두: {prefix}\n참고: 스캔된 코드는 [{hint}] 전용 코드입니다.\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
+        "ng_model_msg": "[NG: 선택 모델과 바코드 코드가 일치하지 않습니다]\n\n현재 선택 모델: {model} ({target})\n스캔된 코드: {code}\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
         "ng_label_dup_title": "⚠️ Label QR NG - 중복 스캔",
         "ng_label_dup_msg": "[Label QR NG: 이미 사용된 Label QR입니다]\n\n스캔 Label QR: {code}...\n이미 등록/포장 완료된 중복 라벨입니다.\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
         "ng_group_title": "⚠️ Grouping NG - 수량 불일치",
@@ -102,14 +109,21 @@ LANG_PACK = {
         "ng_mgr_err_msg": "[NG: 관리자 모드가 아닌 일반 모드에서 QR 리딩 필요]\n\n스캔 바코드: {code}\n신규 제품은 일반 모드에서 등록해야 합니다.\n해당 스캔은 기록되지 않습니다.\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
         "ng_dup_title": "🚫 QR NG - 중복 바코드 감지",
         "ng_dup_msg": "[QR NG 발생: 이미 스캔된 바코드입니다]\n\n스캔 바코드: {code}\n해당 제품 및 연결된 박스 헤더가 NG로 변경되었습니다.\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
+        "ng_pallet_mid_title": "⚠️ NG - Pallet 리딩 시점 오류",
+        "ng_pallet_mid_msg": "[NG: 단품 스캔 도중에는 Pallet QR을 리딩할 수 없습니다]\n\n현재 {count}개의 단품이 스캔 중입니다.\n10개 단품 및 Label QR 스캔을 완료한 후 Pallet QR을 리딩하세요.",
+        "ng_pallet_limit_title": "🚫 NG - Pallet QR 누락 (13박스 초과)",
+        "ng_pallet_limit_msg": "[NG: Pallet QR 리딩 누락]\n\n이미 12개 박스가 채워졌습니다.\n새 Pallet QR을 리딩하지 않고 13번째 이상 박스를 진행할 수 없습니다.\n\n관리자 비밀번호를 입력하여 해제하세요.",
+        "pallet_popup_title": "Pallet QR 스캔 대기",
+        "pallet_popup_msg": "12개 박스 포장이 완료되었습니다.\n새로운 Pallet QR을 스캔해주세요.",
         "unlock_btn": "확인 및 잠금 해제",
         "confirm_btn": "확인 (Enter)",
         "pw_err": "비밀번호가 올바르지 않습니다."
     },
     "English": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Password Setting",
         "tab_scan": "  QR Scan  ",
+        "tab_grouping": "  Grouping  ",
         "tab_recode": "  Re-code  ",
         "model_label": "Model",
         "code_label": "Part No",
@@ -119,7 +133,11 @@ LANG_PACK = {
         "manager_btn": "MANAGER MODE",
         "manager_btn_on": "MANAGER MODE [ON]",
         "pending_status": "Ungrouped: {count} pcs – Waiting for Label QR",
+        "pallet_status": "Current Pallet: {pallet} ({boxes}/{max_b} Boxes)",
         "record_header": "{model} Records",
+        "grouping_header": "{model} Pallet - Box Grouping Overview",
+        "th_pallet": "Pallet Label QR",
+        "th_box_seq": "Box Seq",
         "th_day": "DAY",
         "th_time": "TIME",
         "th_label": "Label QR",
@@ -135,7 +153,7 @@ LANG_PACK = {
         "sorting_title": "⚠️ Sorting Required Alert",
         "sorting_msg": "[Alert: Sorting Required Product]\n\nDMC Code: {code}\n\nThis product is registered in the Sorting list.\nIsolate the part and press [Enter] to continue.",
         "ng_model_title": "⚠️ NG - Model Mismatch",
-        "ng_model_msg": "[NG: Scanned barcode does not match selected model]\n\nSelected Model: {model} ({target})\nScanned Prefix: {prefix}\nRef: Scanned code belongs to [{hint}].\n\nEnter 6-digit Admin Password to unlock.",
+        "ng_model_msg": "[NG: Scanned barcode does not match selected model]\n\nSelected Model: {model} ({target})\nScanned Code: {code}\n\nEnter 6-digit Admin Password to unlock.",
         "ng_label_dup_title": "⚠️ Label QR NG - Duplicate Label",
         "ng_label_dup_msg": "[Label QR NG: This Label QR is already used]\n\nScanned Label: {code}...\nDuplicate box label detected.\n\nEnter 6-digit Admin Password to unlock.",
         "ng_group_title": "⚠️ Grouping NG - Quantity Mismatch",
@@ -146,14 +164,21 @@ LANG_PACK = {
         "ng_mgr_err_msg": "[NG: New QR must be scanned in Normal Mode]\n\nScanned Barcode: {code}\nNew parts cannot be added under Manager Mode.\nScan discarded.\n\nEnter 6-digit Admin Password to unlock.",
         "ng_dup_title": "🚫 QR NG - Duplicate Part Detected",
         "ng_dup_msg": "[QR NG: Duplicate part barcode detected]\n\nScanned Barcode: {code}\nThis part and associated Box Header are marked as NG.\n\nEnter 6-digit Admin Password to unlock.",
+        "ng_pallet_mid_title": "⚠️ NG - Invalid Pallet Scan Timing",
+        "ng_pallet_mid_msg": "[NG: Cannot scan Pallet QR while box packing is in progress]\n\nCurrently {count} items are pending.\nFinish 10 items and Label QR before scanning Pallet QR.",
+        "ng_pallet_limit_title": "🚫 NG - Pallet QR Missing (Exceeded 12 Boxes)",
+        "ng_pallet_limit_msg": "[NG: Pallet QR Missing]\n\n12 boxes are already filled.\nCannot pack 13th box without scanning a new Pallet QR.\n\nEnter Admin Password to unlock.",
+        "pallet_popup_title": "Waiting for Pallet QR",
+        "pallet_popup_msg": "12 boxes completed on current pallet.\nPlease scan new Pallet QR.",
         "unlock_btn": "Confirm & Unlock",
         "confirm_btn": "Confirm (Enter)",
         "pw_err": "Incorrect Password."
     },
     "Polski": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Ustawienie hasła",
         "tab_scan": "  Skan QR  ",
+        "tab_grouping": "  Grupowanie  ",
         "tab_recode": "  Re-code  ",
         "model_label": "Model",
         "code_label": "Kod części",
@@ -163,7 +188,11 @@ LANG_PACK = {
         "manager_btn": "TRYB MENEDŻERA",
         "manager_btn_on": "TRYB MENEDŻERA [ON]",
         "pending_status": "Oczekujące: {count} szt. – Oczekiwanie na Label QR",
+        "pallet_status": "Bieżąca paleta: {pallet} ({boxes}/{max_b} pudełek)",
         "record_header": "{model} Historia",
+        "grouping_header": "{model} Przegląd grupowania Paleta - Pudełko",
+        "th_pallet": "Pallet Label QR",
+        "th_box_seq": "Nr pudełka",
         "th_day": "DZIEŃ",
         "th_time": "CZAS",
         "th_label": "Label QR",
@@ -179,9 +208,9 @@ LANG_PACK = {
         "sorting_title": "⚠️ Wymagane sortowanie",
         "sorting_msg": "[Uwaga: Wymagane sortowanie produktu]\n\nKod DMC: {code}\n\nTen produkt znajduje się na liście sortowania.\nOdizoluj część i naciśnij [Enter], aby kontynuować.",
         "ng_model_title": "⚠️ NG - Niezgodność modelu",
-        "ng_model_msg": "[NG: Zeskanowany kod nie pasuje do wybranego modelu]\n\nWybrany model: {model} ({target})\nPrefiks kodu: {prefix}\nUwaga: Ten kod należy do [{hint}].\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
+        "ng_model_msg": "[NG: Zeskanowany kod nie pasuje do wybranego modelu]\n\nWybrany model: {model} ({target})\nKod: {code}\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
         "ng_label_dup_title": "⚠️ Label QR NG - Duplikat etykiety",
-        "ng_label_dup_msg": "[Label QR NG: Ta etykieta została już użyta]\n\nZeskanowana etykieta: {code}...\nWykryto duplikat etykiety pudełka.\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
+        "ng_label_dup_msg": "[Label QR NG: Ta etykieta została 이미 사용되었습니다]\n\nZeskanowana etykieta: {code}...\nWykryto duplikat etykiety pudełka.\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
         "ng_group_title": "⚠️ Grouping NG - Niezgodność ilości",
         "ng_group_msg": "[Grouping NG: Ilość sztuk nie zgadza się z etykietą]\n\nIlość na etykiecie: {expected} szt.\nZeskanowano: {current} szt.\n\nNie można utworzyć grupy.\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
         "ng_limit_title": "⚠️ NG - Brak Label QR",
@@ -190,6 +219,12 @@ LANG_PACK = {
         "ng_mgr_err_msg": "[NG: Nowe części należy skanować w trybie standardowym]\n\nZeskanowany kod: {code}\nNowy element został odrzucony.\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
         "ng_dup_title": "🚫 QR NG - Wykryto zduplikowany element",
         "ng_dup_msg": "[QR NG: Kod tego elementu został 이미 이전 기록에 있습니다]\n\nZeskanowany kod: {code}\nTen element i nagłówek partii oznaczono jako NG.\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
+        "ng_pallet_mid_title": "⚠️ NG - Błędny moment skanowania palety",
+        "ng_pallet_mid_msg": "[NG: Nie można skanować kodu palety podczas pakowania pudełka]\n\nObecnie oczekuje {count} elementów.\nZakończ 10 sztuk i Label QR przed zeskanowaniem palety.",
+        "ng_pallet_limit_title": "🚫 NG - Brak kodu palety (Przekroczono 12 pudełek)",
+        "ng_pallet_limit_msg": "[NG: Wymagany nowy kod palety]\n\nZapakowano już 12 pudełek.\nNie można kontynuować 13. pudełka bez nowej palety.\n\nWprowadź hasło administratora.",
+        "pallet_popup_title": "Oczekiwanie na kod palety",
+        "pallet_popup_msg": "Ukończono 12 pudełek na palecie.\nZeskanuj kod nowej palety.",
         "unlock_btn": "Potwierdź i odblokuj",
         "confirm_btn": "Potwierdź (Enter)",
         "pw_err": "Nieprawidłowe hasło."
@@ -209,24 +244,27 @@ COLOR_NG = "#dc3545"
 class QRScanStationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION [REAR]")
-        self.root.geometry("1340x800")
-        self.root.minsize(1200, 720)
+        self.root.title("QR SCAN STATION [FRONT]")
+        self.root.geometry("1420x820")
+        self.root.minsize(1240, 740)
         self.root.configure(bg=BG_MAIN)
 
         self.current_lang = tk.StringVar(value="한국어")
-        self.current_model = tk.StringVar(value='S-REAR')
+        self.current_model = tk.StringVar(value='S-FRONT')
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
         self.is_manager_mode = False
         self.active_popup = None
+        self.pallet_wait_popup = None
 
         self.last_scanned_code = ""
         self.last_scanned_time = 0.0
         self.auto_submit_timer = None
 
         self.model_counts = self.load_model_counts()
+        self.pallet_state = self.load_pallet_state()
+
         self.scanned_history_by_model = {m: set() for m in MODEL_CONFIG}
         self.scanned_label_by_model = {m: set() for m in MODEL_CONFIG}
         self.sorting_list_by_model = {m: set() for m in MODEL_CONFIG}
@@ -277,6 +315,27 @@ class QRScanStationApp:
         except Exception:
             pass
 
+    def load_pallet_state(self):
+        default_state = {m: {"current_pallet": "", "box_count": 0} for m in MODEL_CONFIG}
+        if os.path.exists(STATE_FILE):
+            try:
+                with open(STATE_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    for m in default_state:
+                        if m in data:
+                            default_state[m] = data[m]
+                    return default_state
+            except Exception:
+                return default_state
+        return default_state
+
+    def save_pallet_state(self):
+        try:
+            with open(STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.pallet_state, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     def setup_custom_styles(self):
         style = ttk.Style()
         style.theme_use("clam")
@@ -317,7 +376,7 @@ class QRScanStationApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION  [REAR]", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="QR  SCAN  STATION  [FRONT]", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -357,13 +416,18 @@ class QRScanStationApp:
         self.notebook = ttk.Notebook(self.root, style="Dark.TNotebook")
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
 
+        # 3개 탭 구성 (QR Scan, Grouping, Re-code)
         self.tab_scan = tk.Frame(self.notebook, bg=BG_MAIN)
         self.notebook.add(self.tab_scan, text=self.t("tab_scan"))
+
+        self.tab_grouping = tk.Frame(self.notebook, bg=BG_MAIN)
+        self.notebook.add(self.tab_grouping, text=self.t("tab_grouping"))
 
         self.tab_recode = tk.Frame(self.notebook, bg=BG_MAIN)
         self.notebook.add(self.tab_recode, text=self.t("tab_recode"))
 
         self.build_scan_tab()
+        self.build_grouping_tab()
         self.build_recode_tab()
 
     def build_scan_tab(self):
@@ -427,24 +491,31 @@ class QRScanStationApp:
         self.lbl_ng_val.pack()
         tk.Label(card_ng, text="NG", font=("Arial", 8, "bold"), fg=TEXT_MUTED, bg="#1a1e26").pack()
 
-        self.btn_reset = tk.Button(
+        btn_reset = tk.Button(
             left_panel, text=self.t("reset_btn"), command=self.open_reset_dialog,
             bg="#2c323d", fg="#ff8787", activebackground="#3d2729", activeforeground="#ff6b6b",
             relief="flat", font=("맑은 고딕", 9, "bold"), pady=4, cursor="hand2"
         )
-        self.btn_reset.pack(fill=tk.X, padx=20, pady=(8, 4))
+        btn_reset.pack(fill=tk.X, padx=20, pady=(8, 4))
+        self.btn_reset = btn_reset
 
         self.btn_manager = tk.Button(
             left_panel, text=self.t("manager_btn"), command=self.toggle_manager_mode,
             bg="#2c323d", fg="#adb5bd", activebackground="#303642", activeforeground="#ffffff",
             relief="flat", font=("맑은 고딕", 9, "bold"), pady=4, cursor="hand2"
         )
-        self.btn_manager.pack(fill=tk.X, padx=20, pady=(0, 10))
+        self.btn_manager.pack(fill=tk.X, padx=20, pady=(0, 8))
+
+        self.lbl_pallet_status = tk.Label(
+            left_panel, text="현재 팔레트: - (0/12 박스)",
+            font=("맑은 고딕", 9, "bold"), fg="#38bdf8", bg=BG_PANEL, anchor="w"
+        )
+        self.lbl_pallet_status.pack(fill=tk.X, padx=20, pady=(2, 3))
 
         self.lbl_pending_status = tk.Label(
             left_panel, text="", font=("맑은 고딕", 9), fg=TEXT_MUTED, bg=BG_PANEL, anchor="w"
         )
-        self.lbl_pending_status.pack(fill=tk.X, padx=20, pady=(5, 5))
+        self.lbl_pending_status.pack(fill=tk.X, padx=20, pady=(0, 5))
 
         right_panel = tk.Frame(main_frame, bg=BG_MAIN)
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
@@ -454,10 +525,12 @@ class QRScanStationApp:
         )
         self.lbl_right_header.pack(fill=tk.X, pady=(0, 6))
 
-        columns = ("DAY", "TIME", "Label QR", "DMC", "JUDGMENT", "Content")
+        columns = ("Pallet", "DAY", "TIME", "Label QR", "DMC", "JUDGMENT", "Content")
         self.tree = ttk.Treeview(right_panel, columns=columns, show="headings", style="Dark.Treeview")
         self.tree.tag_configure("ng_row", background="#3a1c1f", foreground="#ff6b6b")
+        self.tree.tag_configure("pallet_row", background="#1e3a5f", foreground="#7dd3fc")
 
+        self.tree.heading("Pallet", text=self.t("th_pallet"))
         self.tree.heading("DAY", text=self.t("th_day"))
         self.tree.heading("TIME", text=self.t("th_time"))
         self.tree.heading("Label QR", text=self.t("th_label"))
@@ -465,18 +538,153 @@ class QRScanStationApp:
         self.tree.heading("JUDGMENT", text=self.t("th_judgment"))
         self.tree.heading("Content", text=self.t("th_content"))
 
-        self.tree.column("DAY", width=85, anchor="center")
-        self.tree.column("TIME", width=75, anchor="center")
-        self.tree.column("Label QR", width=240, anchor="w")
-        self.tree.column("DMC", width=230, anchor="w")
+        self.tree.column("Pallet", width=170, anchor="w")
+        self.tree.column("DAY", width=80, anchor="center")
+        self.tree.column("TIME", width=70, anchor="center")
+        self.tree.column("Label QR", width=220, anchor="w")
+        self.tree.column("DMC", width=210, anchor="w")
         self.tree.column("JUDGMENT", width=75, anchor="center")
-        self.tree.column("Content", width=100, anchor="center")
+        self.tree.column("Content", width=95, anchor="center")
 
         tree_scroll = ttk.Scrollbar(right_panel, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscroll=tree_scroll.set)
 
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+    # ==========================================
+    # Grouping 전용 탭 (DMC 제외, Pallet-Box Grouping 내역 전용)
+    # ==========================================
+    def build_grouping_tab(self):
+        group_frame = tk.Frame(self.tab_grouping, bg=BG_MAIN)
+        group_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+
+        header_bar = tk.Frame(group_frame, bg=BG_PANEL, pady=8, padx=15)
+        header_bar.pack(fill=tk.X, pady=(0, 10))
+
+        self.lbl_grouping_header = tk.Label(
+            header_bar, text="",
+            font=("맑은 고딕", 10, "bold"), fg="#38bdf8", bg=BG_PANEL
+        )
+        self.lbl_grouping_header.pack(side=tk.LEFT)
+
+        btn_refresh = tk.Button(
+            header_bar, text="🔄 새로고침", command=self.refresh_grouping_tab,
+            bg="#2b5278", fg="#ffffff", relief="flat", font=("맑은 고딕", 9, "bold"), padx=12, pady=2, cursor="hand2"
+        )
+        btn_refresh.pack(side=tk.RIGHT)
+
+        cols = ("Pallet", "BoxSeq", "DAY", "TIME", "Label QR", "Qty", "JUDGMENT")
+        self.tree_grouping = ttk.Treeview(group_frame, columns=cols, show="headings", style="Dark.Treeview")
+        self.tree_grouping.tag_configure("pallet_start", background="#1a365d", foreground="#93c5fd")
+        self.tree_grouping.tag_configure("pallet_done", background="#223042", foreground="#94a3b8")
+        self.tree_grouping.tag_configure("ng_box", background="#3a1c1f", foreground="#ff6b6b")
+
+        self.tree_grouping.heading("Pallet", text=self.t("th_pallet"))
+        self.tree_grouping.heading("BoxSeq", text=self.t("th_box_seq"))
+        self.tree_grouping.heading("DAY", text=self.t("th_day"))
+        self.tree_grouping.heading("TIME", text=self.t("th_time"))
+        self.tree_grouping.heading("Label QR", text=self.t("th_label"))
+        self.tree_grouping.heading("Qty", text="수량 (Qty)")
+        self.tree_grouping.heading("JUDGMENT", text=self.t("th_judgment"))
+
+        self.tree_grouping.column("Pallet", width=220, anchor="w")
+        self.tree_grouping.column("BoxSeq", width=85, anchor="center")
+        self.tree_grouping.column("DAY", width=95, anchor="center")
+        self.tree_grouping.column("TIME", width=85, anchor="center")
+        self.tree_grouping.column("Label QR", width=340, anchor="w")
+        self.tree_grouping.column("Qty", width=90, anchor="center")
+        self.tree_grouping.column("JUDGMENT", width=85, anchor="center")
+
+        scroll_g = ttk.Scrollbar(group_frame, orient=tk.VERTICAL, command=self.tree_grouping.yview)
+        self.tree_grouping.configure(yscroll=scroll_g.set)
+
+        self.tree_grouping.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll_g.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def refresh_grouping_tab(self):
+        self.tree_grouping.delete(*self.tree_grouping.get_children())
+        curr_model = self.current_model.get()
+        files = self.get_all_model_files(curr_model)
+        if not files:
+            return
+
+        def _loader():
+            group_rows = []
+            current_pallet_code = ""
+            box_seq_tracker = 0
+
+            for filepath in files:
+                unhide_file(filepath)
+                wb = openpyxl.load_workbook(filepath, data_only=True)
+                ws = wb["스캔실적"] if "스캔실적" in wb.sheetnames else wb.active
+
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    if not row or len(row) < 7:
+                        continue
+
+                    if len(row) >= 8:
+                        p_val = str(row[0]).strip() if row[0] and str(row[0]).strip() != "-" else ""
+                        lbl_val = str(row[1]).strip() if row[1] and str(row[1]).strip() != "-" else ""
+                        box_time = str(row[2]).strip() if row[2] and str(row[2]).strip() != "-" else ""
+                        seq_val = str(row[3]).strip() if row[3] else ""
+                        desc_val = str(row[4]).strip() if row[4] else ""
+                        res_val = str(row[6]).strip() if row[6] else "OK"
+                    else:
+                        p_val = ""
+                        lbl_val = str(row[0]).strip() if row[0] and str(row[0]).strip() != "-" else ""
+                        box_time = str(row[1]).strip() if row[1] and str(row[1]).strip() != "-" else ""
+                        seq_val = str(row[2]).strip() if row[2] else ""
+                        desc_val = str(row[3]).strip() if row[3] else ""
+                        res_val = str(row[5]).strip() if row[5] else "OK"
+
+                    # 1) Pallet Start
+                    if seq_val == "Final HEADER" and "Start" in desc_val:
+                        current_pallet_code = p_val
+                        box_seq_tracker = 0
+                        t_parts = box_time.split()
+                        d_str = t_parts[0] if len(t_parts) > 0 else ""
+                        tm_str = t_parts[1] if len(t_parts) > 1 else ""
+                        group_rows.append((p_val, "-", d_str, tm_str, "[Pallet Grouping Start]", "-", "START", "pallet_start"))
+                        continue
+
+                    # 2) Pallet Done
+                    if seq_val == "Final HEADER" and "Done" in desc_val:
+                        t_parts = box_time.split()
+                        d_str = t_parts[0] if len(t_parts) > 0 else ""
+                        tm_str = t_parts[1] if len(t_parts) > 1 else ""
+                        group_rows.append((p_val, "-", d_str, tm_str, "[Pallet Grouping Done]", f"{box_seq_tracker} 박스", "DONE", "pallet_done"))
+                        box_seq_tracker = 0
+                        continue
+
+                    # 3) Box Grouping Header 행만 추출 (개별 단품 DMC는 완벽 제외)
+                    if seq_val == "HEADER" or "Group" in desc_val or "Box" in desc_val:
+                        box_seq_tracker += 1
+                        t_parts = box_time.split()
+                        d_str = t_parts[0] if len(t_parts) > 0 else ""
+                        tm_str = t_parts[1] if len(t_parts) > 1 else ""
+
+                        qty_str = "10"
+                        if "Done:" in desc_val:
+                            try:
+                                qty_str = desc_val.split("Done:")[1].split("pcs")[0].strip()
+                            except Exception:
+                                qty_str = "10"
+
+                        tag = "ng_box" if res_val == "NG" else ""
+                        effective_p = p_val if p_val else current_pallet_code
+                        group_rows.append((effective_p, f"#{box_seq_tracker}", d_str, tm_str, lbl_val, f"{qty_str} pcs", res_val, tag))
+
+                hide_file(filepath)
+
+            def _populate():
+                for r in reversed(group_rows):
+                    tag = r[7]
+                    self.tree_grouping.insert("", tk.END, values=r[:7], tags=(tag,) if tag else ())
+
+            self.root.after(0, _populate)
+
+        threading.Thread(target=_loader, daemon=True).start()
 
     def build_recode_tab(self):
         recode_frame = tk.Frame(self.tab_recode, bg=BG_MAIN)
@@ -521,10 +729,12 @@ class QRScanStationApp:
         )
         self.btn_save.pack(side=tk.RIGHT)
 
-        cols = ("DAY", "TIME", "Label QR", "DMC", "JUDGMENT", "Content")
+        cols = ("Pallet", "DAY", "TIME", "Label QR", "DMC", "JUDGMENT", "Content")
         self.tree_recode = ttk.Treeview(recode_frame, columns=cols, show="headings", style="Dark.Treeview")
         self.tree_recode.tag_configure("ng_row", background="#3a1c1f", foreground="#ff6b6b")
+        self.tree_recode.tag_configure("pallet_row", background="#1e3a5f", foreground="#7dd3fc")
 
+        self.tree_recode.heading("Pallet", text=self.t("th_pallet"))
         self.tree_recode.heading("DAY", text=self.t("th_day"))
         self.tree_recode.heading("TIME", text=self.t("th_time"))
         self.tree_recode.heading("Label QR", text=self.t("th_label"))
@@ -532,12 +742,13 @@ class QRScanStationApp:
         self.tree_recode.heading("JUDGMENT", text=self.t("th_judgment"))
         self.tree_recode.heading("Content", text=self.t("th_content"))
 
-        self.tree_recode.column("DAY", width=85, anchor="center")
-        self.tree_recode.column("TIME", width=75, anchor="center")
-        self.tree_recode.column("Label QR", width=250, anchor="w")
-        self.tree_recode.column("DMC", width=240, anchor="w")
+        self.tree_recode.column("Pallet", width=170, anchor="w")
+        self.tree_recode.column("DAY", width=80, anchor="center")
+        self.tree_recode.column("TIME", width=70, anchor="center")
+        self.tree_recode.column("Label QR", width=220, anchor="w")
+        self.tree_recode.column("DMC", width=210, anchor="w")
         self.tree_recode.column("JUDGMENT", width=75, anchor="center")
-        self.tree_recode.column("Content", width=100, anchor="center")
+        self.tree_recode.column("Content", width=95, anchor="center")
 
         scroll_r = ttk.Scrollbar(recode_frame, orient=tk.VERTICAL, command=self.tree_recode.yview)
         self.tree_recode.configure(yscroll=scroll_r.set)
@@ -547,7 +758,8 @@ class QRScanStationApp:
 
     def on_language_changed(self, event=None):
         self.notebook.tab(0, text=self.t("tab_scan"))
-        self.notebook.tab(1, text=self.t("tab_recode"))
+        self.notebook.tab(1, text=self.t("tab_grouping"))
+        self.notebook.tab(2, text=self.t("tab_recode"))
 
         self.btn_pw.config(text=self.t("pw_setting"))
         self.btn_reset.config(text=self.t("reset_btn"))
@@ -561,9 +773,12 @@ class QRScanStationApp:
         target_code = MODEL_CONFIG[model]
         self.lbl_model_info.config(text=f"{self.t('model_label')} {model}\n{self.t('code_label')} {target_code}")
         self.lbl_right_header.config(text=self.t("record_header", model=model))
+        self.lbl_grouping_header.config(text=self.t("grouping_header", model=model))
         self.lbl_pending_status.config(text=self.t("pending_status", count=len(self.pending_items)))
+        self.update_pallet_status_ui()
 
         for tree_obj in (self.tree, self.tree_recode):
+            tree_obj.heading("Pallet", text=self.t("th_pallet"))
             tree_obj.heading("DAY", text=self.t("th_day"))
             tree_obj.heading("TIME", text=self.t("th_time"))
             tree_obj.heading("Label QR", text=self.t("th_label"))
@@ -571,12 +786,26 @@ class QRScanStationApp:
             tree_obj.heading("JUDGMENT", text=self.t("th_judgment"))
             tree_obj.heading("Content", text=self.t("th_content"))
 
+        self.tree_grouping.heading("Pallet", text=self.t("th_pallet"))
+        self.tree_grouping.heading("BoxSeq", text=self.t("th_box_seq"))
+        self.tree_grouping.heading("DAY", text=self.t("th_day"))
+        self.tree_grouping.heading("TIME", text=self.t("th_time"))
+        self.tree_grouping.heading("Label QR", text=self.t("th_label"))
+        self.tree_grouping.heading("JUDGMENT", text=self.t("th_judgment"))
+
         self.lbl_filter_day.config(text=self.t("filter_day"))
         self.lbl_filter_time.config(text=self.t("filter_time"))
         self.btn_search.config(text=self.t("search_btn"))
         self.btn_save.config(text=self.t("save_btn"))
 
         self.scan_entry.focus_set()
+
+    def update_pallet_status_ui(self):
+        m = self.current_model.get()
+        info = self.pallet_state.get(m, {"current_pallet": "", "box_count": 0})
+        p_name = info["current_pallet"] if info["current_pallet"] else "-"
+        b_cnt = info["box_count"]
+        self.lbl_pallet_status.config(text=self.t("pallet_status", pallet=p_name, boxes=b_cnt, max_b=MAX_BOXES_PER_PALLET))
 
     def on_entry_key_release(self, event):
         if event.keysym in ("Return", "KP_Enter"):
@@ -635,10 +864,10 @@ class QRScanStationApp:
             font_size = 46
         elif len(text) <= 7:
             font_size = 36
-        elif len(text) <= 11:
-            font_size = 30
+        elif len(text) <= 12:
+            font_size = 28
         else:
-            font_size = 26
+            font_size = 22
 
         self.status_box.config(text=text, fg=fg_color, bg=bg_color, font=("Arial", font_size, "bold"))
 
@@ -654,7 +883,7 @@ class QRScanStationApp:
         dialog.geometry(f"{width}x{height}+{max(0, x)}+{max(0, y)}")
 
     def toggle_manager_mode(self):
-        if self.active_popup:
+        if self.active_popup or self.pallet_wait_popup:
             return
 
         win = tk.Toplevel(self.root)
@@ -702,7 +931,6 @@ class QRScanStationApp:
         self.is_manager_mode = False
         self.btn_manager.config(bg="#2c323d", fg="#adb5bd", text=self.t("manager_btn"))
 
-    # Sorting 팝업 다국어 지원 및 UI
     def open_sorting_popup(self, dmc_code):
         dialog = tk.Toplevel(self.root)
         dialog.title(self.t("sorting_title"))
@@ -737,6 +965,35 @@ class QRScanStationApp:
         btn.pack(pady=10)
         btn.focus_set()
 
+    def open_pallet_wait_popup(self):
+        if self.pallet_wait_popup:
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title(self.t("pallet_popup_title"))
+        dialog.resizable(False, False)
+        dialog.configure(bg="#1e293b")
+
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        self.center_popup(dialog, 520, 240)
+        self.pallet_wait_popup = dialog
+
+        tk.Label(dialog, text="[12 BOX PACKING COMPLETE]", font=("맑은 고딕", 12, "bold"), fg="#38bdf8", bg="#1e293b").pack(pady=(25, 8))
+        tk.Label(dialog, text=self.t("pallet_popup_msg"), font=("맑은 고딕", 13, "bold"), fg="#f8fafc", bg="#1e293b").pack(pady=10)
+        tk.Label(dialog, text="* 새 Pallet QR을 스캔하면 자동으로 해제됩니다.", font=("맑은 고딕", 9), fg="#94a3b8", bg="#1e293b").pack(pady=5)
+
+    def close_pallet_wait_popup(self):
+        if self.pallet_wait_popup:
+            try:
+                self.pallet_wait_popup.grab_release()
+                self.pallet_wait_popup.destroy()
+            except Exception:
+                pass
+            self.pallet_wait_popup = None
+
     # ==========================================
     # 4. 모델 변경 및 과거 기록 복원 로더
     # ==========================================
@@ -749,13 +1006,16 @@ class QRScanStationApp:
 
         self.lbl_model_info.config(text=f"{self.t('model_label')} {model}\n{self.t('code_label')} {target_code}")
         self.lbl_right_header.config(text=self.t("record_header", model=model))
+        self.lbl_grouping_header.config(text=self.t("grouping_header", model=model))
         
         self.pending_items.clear()
         self.pending_tree_ids.clear()
         self.lbl_pending_status.config(text=self.t("pending_status", count=0))
+        self.update_pallet_status_ui()
 
         self.update_stat_cards()
         self.load_history_from_excel(model, target_code, current_session)
+        self.refresh_grouping_tab()
         self.scan_entry.focus_set()
 
     def get_all_model_files(self, model_name):
@@ -791,7 +1051,7 @@ class QRScanStationApp:
                         for r in range(2, 2001):
                             cell_v = ws_sort.cell(row=r, column=2).value
                             if cell_v:
-                                self.sorting_list_by_model[model_name].add(str(cell_v).strip())
+                                self.sorting_list_by_model[model_name].add(str(cell_v).strip().upper())
 
                     if "스캔실적" in wb.sheetnames:
                         ws = wb["스캔실적"]
@@ -800,26 +1060,42 @@ class QRScanStationApp:
                         ws = sheets[0] if sheets else wb.active
 
                     for row in ws.iter_rows(min_row=2, values_only=True):
-                        if not row or len(row) < 6:
+                        if not row or len(row) < 7:
                             continue
-                        lbl_val = row[0]
-                        box_time = row[1]
-                        seq_val = row[2]
-                        dmc_val = row[3]
-                        dmc_time = row[4]
-                        res = row[5]
-                        content = row[6] if len(row) >= 7 and row[6] else ""
+                        
+                        if len(row) >= 8:
+                            pallet_val = str(row[0]).strip() if row[0] and str(row[0]).strip() != "-" else ""
+                            lbl_val = row[1]
+                            box_time = row[2]
+                            seq_val = row[3]
+                            dmc_val = row[4]
+                            dmc_time = row[5]
+                            res = row[6]
+                            content = row[7] if len(row) >= 8 and row[7] else ""
+                        else:
+                            pallet_val = ""
+                            lbl_val = row[0]
+                            box_time = row[1]
+                            seq_val = row[2]
+                            dmc_val = row[3]
+                            dmc_time = row[4]
+                            res = row[5]
+                            content = row[6] if len(row) >= 7 and row[6] else ""
 
                         lbl_str = str(lbl_val).strip() if lbl_val and str(lbl_val).strip() != "-" else ""
                         dmc_str = str(dmc_val).strip() if dmc_val and str(dmc_val).strip() != "-" else ""
                         res_str = str(res).strip() if res else "OK"
                         content_str = str(content).strip() if content else ""
 
+                        if seq_val == "Final HEADER":
+                            rows_to_insert.append((pallet_val, "", "", "", dmc_str, res_str, content_str))
+                            continue
+
                         if seq_val == "HEADER" or dmc_str.startswith("[박스 묶음 완료") or "Group" in dmc_str or "Pakiet" in dmc_str:
                             t_parts = str(box_time).split()
                             day_val = t_parts[0] if len(t_parts) > 0 else ""
                             time_val = t_parts[1] if len(t_parts) > 1 else ""
-                            rows_to_insert.append((day_val, time_val, lbl_str, dmc_str, res_str, content_str))
+                            rows_to_insert.append((pallet_val, day_val, time_val, lbl_str, dmc_str, res_str, content_str))
                             if lbl_str:
                                 self.scanned_label_by_model[model_name].add(lbl_str)
                             last_label = ""
@@ -834,8 +1110,8 @@ class QRScanStationApp:
                         day_val = t_parts[0] if len(t_parts) > 0 else ""
                         time_val = t_parts[1] if len(t_parts) > 1 else ""
 
-                        clean_dmc = dmc_str.replace("[중복스캔] ", "").replace("[중복 스캔] ", "")
-                        if not clean_dmc.upper().startswith(target_upper):
+                        clean_dmc = dmc_str.replace("[중복스캔] ", "").replace("[중복 스캔] ", "").upper()
+                        if not clean_dmc.startswith(target_upper):
                             continue
 
                         if lbl_str:
@@ -850,10 +1126,10 @@ class QRScanStationApp:
 
                         if final_label and final_label.upper().startswith(target_upper):
                             self.scanned_label_by_model[model_name].add(final_label)
-                        if clean_dmc and clean_dmc.upper().startswith(target_upper):
+                        if clean_dmc and clean_dmc.startswith(target_upper):
                             self.scanned_history_by_model[model_name].add(clean_dmc)
 
-                        rows_to_insert.append((day_val, time_val, final_label, dmc_str, res_str, content_str))
+                        rows_to_insert.append((pallet_val, day_val, time_val, final_label, dmc_str, res_str, content_str))
 
                     hide_file(filepath)
 
@@ -863,7 +1139,11 @@ class QRScanStationApp:
                 def _populate():
                     if session_id == self.model_session_id:
                         for r in reversed(rows_to_insert):
-                            tag = "ng_row" if r[4] == "NG" else ""
+                            tag = ""
+                            if r[5] == "NG":
+                                tag = "ng_row"
+                            elif "Pallet" in str(r[4]):
+                                tag = "pallet_row"
                             self.tree.insert("", tk.END, values=r, tags=(tag,) if tag else ())
                         
                         if loaded_pending:
@@ -878,8 +1158,16 @@ class QRScanStationApp:
         threading.Thread(target=_loader, daemon=True).start()
 
     # ==========================================
-    # 5. 스캔 판정 로직
+    # 5. 스캔 판정 로직 (Pallet QR 지원)
     # ==========================================
+    def is_pallet_qr(self, code):
+        c = code.strip().upper()
+        if ';' in c:
+            return False
+        if c.startswith("PALLET") or c.startswith("KR02") or " " in c or "\t" in c:
+            return True
+        return False
+
     def process_scan(self, raw_code):
         if self.auto_submit_timer:
             self.root.after_cancel(self.auto_submit_timer)
@@ -895,13 +1183,6 @@ class QRScanStationApp:
         if self.active_popup:
             return
 
-        current_time = time.time()
-        if raw_code == self.last_scanned_code and (current_time - self.last_scanned_time) < 2.0:
-            return
-
-        self.last_scanned_code = raw_code
-        self.last_scanned_time = current_time
-
         now = datetime.now()
         day_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H:%M:%S")
@@ -909,24 +1190,62 @@ class QRScanStationApp:
 
         curr_model = self.current_model.get()
         target_code = MODEL_CONFIG[curr_model].upper()
-        scanned_prefix = raw_code[:10].upper()
 
+        # Pallet QR 스캔
+        if self.is_pallet_qr(raw_code):
+            if len(self.pending_items) > 0:
+                self.set_status("Pallet NG", "#dc3545", "#3a1c1f")
+                self.open_lock_popup(
+                    title_text=self.t("ng_pallet_mid_title"),
+                    msg=self.t("ng_pallet_mid_msg", count=len(self.pending_items)),
+                    header_bg="#2d1d20", header_fg="#f87171"
+                )
+                return
+
+            prev_pallet = self.pallet_state[curr_model]["current_pallet"]
+            
+            if prev_pallet:
+                self.direct_append_pallet_header(curr_model, prev_pallet, "Final HEADER", "[Pallet Grouping Done]", timestamp_full)
+                self.tree.insert("", 0, values=(prev_pallet, "", "", "", "[Pallet Grouping Done]", "OK", ""), tags=("pallet_row",))
+
+            self.pallet_state[curr_model]["current_pallet"] = raw_code
+            self.pallet_state[curr_model]["box_count"] = 0
+            self.save_pallet_state()
+            self.update_pallet_status_ui()
+
+            self.direct_append_pallet_header(curr_model, raw_code, "Final HEADER", "[Pallet Grouping Start]", timestamp_full)
+            self.tree.insert("", 0, values=(raw_code, "", "", "", "[Pallet Grouping Start]", "OK", ""), tags=("pallet_row",))
+
+            self.close_pallet_wait_popup()
+            self.refresh_grouping_tab()
+            self.set_status("OK", "#28a745", "#193322")
+            return
+
+        # 일반 바코드 (단품 및 Label QR)
+        current_time = time.time()
+        if raw_code == self.last_scanned_code and (current_time - self.last_scanned_time) < 2.0:
+            return
+
+        self.last_scanned_code = raw_code
+        self.last_scanned_time = current_time
+
+        scanned_prefix = raw_code[:10].upper()
+        clean_upper_code = raw_code.upper()
         is_label_qr = (raw_code.count(';') >= 3)
         self.lbl_last_scan.config(text=f"{self.t('last_scan')}: {raw_code}")
 
         # [검증 1] 모델 코드 불일치 NG
         if scanned_prefix != target_code:
             self.set_status("NG", "#dc3545", "#3a1c1f")
-            hint_model = CODE_TO_MODEL.get(scanned_prefix, "Unknown")
             self.open_lock_popup(
                 title_text=self.t("ng_model_title"),
-                msg=self.t("ng_model_msg", model=curr_model, target=target_code, prefix=raw_code[:10], hint=hint_model),
+                msg=self.t("ng_model_msg", model=curr_model, target=target_code, code=raw_code[:12]),
                 header_bg="#2d1d20", header_fg="#f87171"
             )
             return
 
         # [검증 2] Sorting 필요 제품 체크 (C열 OK 마킹 및 팝업)
-        if not is_label_qr and raw_code in self.sorting_list_by_model[curr_model]:
+        if not is_label_qr and clean_upper_code in self.sorting_list_by_model[curr_model]:
             self.set_status("SORTING", "#f59f00", "#3d2716")
             self.direct_mark_sorting_ok(curr_model, raw_code)
             self.open_sorting_popup(raw_code)
@@ -934,6 +1253,17 @@ class QRScanStationApp:
 
         # [검증 3] Label QR 전용 검증
         if is_label_qr:
+            curr_box_cnt = self.pallet_state[curr_model]["box_count"]
+
+            if curr_box_cnt >= MAX_BOXES_PER_PALLET:
+                self.set_status("Pallet NG", "#dc3545", "#3a1c1f")
+                self.open_lock_popup(
+                    title_text=self.t("ng_pallet_limit_title"),
+                    msg=self.t("ng_pallet_limit_msg"),
+                    header_bg="#2d1d20", header_fg="#f87171"
+                )
+                return
+
             if raw_code in self.scanned_label_by_model[curr_model]:
                 self.set_status("Label QR NG", "#dc3545", "#3a1c1f")
                 self.open_lock_popup(
@@ -970,7 +1300,7 @@ class QRScanStationApp:
                 )
                 return
 
-            is_already_scanned = (raw_code in self.scanned_history_by_model[curr_model])
+            is_already_scanned = (clean_upper_code in self.scanned_history_by_model[curr_model])
 
             if self.is_manager_mode:
                 if not is_already_scanned:
@@ -982,15 +1312,16 @@ class QRScanStationApp:
                     )
                     return
                 else:
-                    # 2. 수정 반영: MANAGER MODE에서 중복 DMC 스캔 시 Label 요구 없이 즉시 OK 처리 및 자동 종료
                     self.set_status("OK", "#28a745", "#193322")
+                    cur_p = self.pallet_state[curr_model]["current_pallet"]
                     item_data = {
+                        "pallet": cur_p,
                         "day": day_str,
                         "time": time_str,
                         "code": raw_code,
                         "result": "OK"
                     }
-                    self.tree.insert("", 0, values=(day_str, time_str, "", raw_code, "OK", ""))
+                    self.tree.insert("", 0, values=(cur_p, day_str, time_str, "", raw_code, "OK", ""))
                     self.direct_append_single_item(curr_model, item_data)
                     self.auto_turn_off_manager_mode()
                     return
@@ -1004,30 +1335,31 @@ class QRScanStationApp:
 
                     self.set_status("QR NG", "#fd7e14", "#3d2716")
 
+                    cur_p = self.pallet_state[curr_model]["current_pallet"]
                     dup_text = self.t("dup_scan_tag")
-                    self.tree.insert("", 0, values=(day_str, time_str, "-", raw_code, "NG", dup_text), tags=("ng_row",))
+                    self.tree.insert("", 0, values=(cur_p, day_str, time_str, "-", raw_code, "NG", dup_text), tags=("ng_row",))
 
                     matched_label_qr = None
                     for item_id in self.tree.get_children():
                         vals = list(self.tree.item(item_id, "values"))
                         if not vals:
                             continue
-                        if vals[3] == raw_code and vals[4] != "NG":
-                            matched_label_qr = vals[2]
-                            vals[4] = "NG"
-                            vals[5] = dup_text
+                        if vals[4].strip().upper() == clean_upper_code and vals[5] != "NG":
+                            matched_label_qr = vals[3]
+                            vals[5] = "NG"
+                            vals[6] = dup_text
                             self.tree.item(item_id, values=vals, tags=("ng_row",))
                             break
 
                     if matched_label_qr and matched_label_qr != "-":
                         for item_id in self.tree.get_children():
                             vals = list(self.tree.item(item_id, "values"))
-                            if vals and vals[2] == matched_label_qr and ("[" in str(vals[3])):
-                                vals[4] = "NG"
+                            if vals and vals[3] == matched_label_qr and ("[" in str(vals[4])):
+                                vals[5] = "NG"
                                 self.tree.item(item_id, values=vals, tags=("ng_row",))
                                 break
 
-                    self.direct_handle_dmc_duplicate(curr_model, raw_code, day_str, time_str, matched_label_qr, dup_text)
+                    self.direct_handle_dmc_duplicate(curr_model, raw_code, day_str, time_str, matched_label_qr, dup_text, cur_p)
 
                     self.open_lock_popup(
                         title_text=self.t("ng_dup_title"),
@@ -1037,6 +1369,7 @@ class QRScanStationApp:
                     return
 
         self.set_status("OK", "#28a745", "#193322")
+        cur_pallet = self.pallet_state[curr_model]["current_pallet"]
 
         if not is_label_qr:
             self.model_counts[curr_model]["ok"] += 1
@@ -1044,8 +1377,9 @@ class QRScanStationApp:
             self.save_model_counts()
             self.update_stat_cards()
 
-            self.scanned_history_by_model[curr_model].add(raw_code)
+            self.scanned_history_by_model[curr_model].add(clean_upper_code)
             item_data = {
+                "pallet": cur_pallet,
                 "day": day_str,
                 "time": time_str,
                 "code": raw_code,
@@ -1053,7 +1387,7 @@ class QRScanStationApp:
             }
             self.pending_items.append(item_data)
             
-            item_id = self.tree.insert("", 0, values=(day_str, time_str, "", raw_code, "OK", ""))
+            item_id = self.tree.insert("", 0, values=(cur_pallet, day_str, time_str, "", raw_code, "OK", ""))
             self.pending_tree_ids.append(item_id)
             self.lbl_pending_status.config(text=self.t("pending_status", count=len(self.pending_items)))
 
@@ -1065,25 +1399,34 @@ class QRScanStationApp:
             for t_id in self.pending_tree_ids:
                 curr_vals = self.tree.item(t_id, "values")
                 if curr_vals:
-                    self.tree.item(t_id, values=(curr_vals[0], curr_vals[1], raw_code, curr_vals[3], curr_vals[4], curr_vals[5]))
+                    self.tree.item(t_id, values=(cur_pallet, curr_vals[1], curr_vals[2], raw_code, curr_vals[4], curr_vals[5], curr_vals[6]))
 
             items_to_bundle = list(self.pending_items)
             bundle_count = len(items_to_bundle)
             header_text = self.t("box_complete", count=bundle_count)
 
-            self.tree.insert("", 0, values=(day_str, time_str, raw_code, header_text, "OK", ""))
+            self.tree.insert("", 0, values=(cur_pallet, day_str, time_str, raw_code, header_text, "OK", ""))
 
             self.pending_items.clear()
             self.pending_tree_ids.clear()
             self.lbl_pending_status.config(text=self.t("pending_status", count=0))
+
+            self.pallet_state[curr_model]["box_count"] += 1
+            self.save_pallet_state()
+            self.update_pallet_status_ui()
+
             self.root.update_idletasks()
 
-            self.direct_finalize_excel_group(curr_model, raw_code, timestamp_full, items_to_bundle, header_text)
+            self.direct_finalize_excel_group(curr_model, cur_pallet, raw_code, timestamp_full, items_to_bundle, header_text)
+            self.refresh_grouping_tab()
+
+            if self.pallet_state[curr_model]["box_count"] >= MAX_BOXES_PER_PALLET:
+                self.open_pallet_wait_popup()
 
         self.scan_entry.focus_set()
 
     # ==========================================
-    # 6. 엑셀 I/O 엔진
+    # 6. 엑셀 8개 열(Pallet 열 포함) 안전 I/O
     # ==========================================
     def open_or_init_workbook(self, filepath):
         unhide_file(filepath)
@@ -1095,6 +1438,16 @@ class QRScanStationApp:
                 else:
                     sheets = [s for s in wb.worksheets if s.title != "sorting"]
                     ws = sheets[0] if sheets else wb.create_sheet(title="스캔실적", index=0)
+                
+                if ws.cell(row=1, column=1).value != "Pallet Label QR":
+                    ws.insert_cols(1)
+                    ws.cell(row=1, column=1, value="Pallet Label QR")
+                    header_fill = PatternFill(start_color="1F242D", end_color="1F242D", fill_type="solid")
+                    header_font = Font(name="맑은 고딕", size=11, bold=True, color="FFFFFF")
+                    ws.cell(row=1, column=1).fill = header_fill
+                    ws.cell(row=1, column=1).font = header_font
+                    ws.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
+                    ws.column_dimensions['A'].width = 30
                 return wb, ws
             except Exception:
                 pass
@@ -1103,25 +1456,26 @@ class QRScanStationApp:
         ws = wb.active
         ws.title = "스캔실적"
 
-        headers = ["Label QR (Box/Lot)", "Label 스캔일시", "단품 순번", "단품 DMC", "단품 스캔일시", "판정", "Content"]
+        headers = ["Pallet Label QR", "Label QR (Box/Lot)", "Label 스캔일시", "단품 순번", "단품 DMC", "단품 스캔일시", "판정", "Content"]
         ws.append(headers)
 
         header_fill = PatternFill(start_color="1F242D", end_color="1F242D", fill_type="solid")
         header_font = Font(name="맑은 고딕", size=11, bold=True, color="FFFFFF")
 
-        for col in range(1, 8):
+        for col in range(1, 9):
             cell = ws.cell(row=1, column=col)
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        ws.column_dimensions['A'].width = 46
-        ws.column_dimensions['B'].width = 20
-        ws.column_dimensions['C'].width = 12
-        ws.column_dimensions['D'].width = 34
-        ws.column_dimensions['E'].width = 20
-        ws.column_dimensions['F'].width = 14
-        ws.column_dimensions['G'].width = 16
+        ws.column_dimensions['A'].width = 30
+        ws.column_dimensions['B'].width = 46
+        ws.column_dimensions['C'].width = 20
+        ws.column_dimensions['D'].width = 12
+        ws.column_dimensions['E'].width = 34
+        ws.column_dimensions['F'].width = 20
+        ws.column_dimensions['G'].width = 14
+        ws.column_dimensions['H'].width = 16
 
         ws_sort = wb.create_sheet(title="sorting")
         ws_sort.cell(row=1, column=2, value="Sorting 대상 DMC Code")
@@ -1131,9 +1485,39 @@ class QRScanStationApp:
 
         return wb, ws
 
+    def direct_append_pallet_header(self, model_name, pallet_code, seq_val, text_val, timestamp_full):
+        with self.file_lock:
+            try:
+                filename = get_quarter_filename(model_name)
+                filepath = os.path.join(BASE_DIR, filename)
+                wb, ws = self.open_or_init_workbook(filepath)
+
+                thin_border = Border(
+                    left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'),
+                    top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
+                )
+                start_fill = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
+                done_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+
+                fill_to_use = start_fill if "Start" in text_val else done_fill
+                row_data = [pallet_code, "-", "-", seq_val, text_val, timestamp_full, "OK", ""]
+                ws.append(row_data)
+                h_idx = ws.max_row
+                for col in range(1, 9):
+                    c = ws.cell(row=h_idx, column=col)
+                    c.border = thin_border
+                    c.fill = fill_to_use
+                    c.alignment = Alignment(horizontal="center" if col in [3, 4, 6, 7, 8] else "left", vertical="center")
+
+                wb.save(filepath)
+                hide_file(filepath)
+            except Exception as e:
+                print(f"[팔레트 헤더 저장 실패]: {e}")
+
     def direct_mark_sorting_ok(self, model_name, raw_code):
         with self.file_lock:
             try:
+                clean_target = raw_code.strip().upper()
                 files = self.get_all_model_files(model_name)
                 current_quarter_file = os.path.join(BASE_DIR, get_quarter_filename(model_name))
                 if current_quarter_file not in files:
@@ -1156,7 +1540,7 @@ class QRScanStationApp:
                         modified = False
                         for r in range(2, 2001):
                             val = ws_sort.cell(row=r, column=2).value
-                            if val and str(val).strip() == raw_code:
+                            if val and str(val).strip().upper() == clean_target:
                                 c_cell = ws_sort.cell(row=r, column=3)
                                 c_cell.value = "OK"
                                 c_cell.fill = ok_fill
@@ -1185,14 +1569,14 @@ class QRScanStationApp:
 
                 start_row = ws.max_row + 1
                 ts_full = f"{item['day']} {item['time']}"
-                row_data = ["-", "-", "-", item["code"], ts_full, item["result"], ""]
+                row_data = [item.get("pallet", ""), "-", "-", "-", item["code"], ts_full, item["result"], ""]
                 ws.append(row_data)
 
-                for col in range(1, 8):
+                for col in range(1, 9):
                     c = ws.cell(row=start_row, column=col)
                     c.border = thin_border
-                    c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6, 7] else "left", vertical="center")
-                    if col == 6:
+                    c.alignment = Alignment(horizontal="center" if col in [3, 4, 6, 7, 8] else "left", vertical="center")
+                    if col == 7:
                         c.fill = ok_fill
 
                 wb.save(filepath)
@@ -1200,20 +1584,21 @@ class QRScanStationApp:
             except Exception as e:
                 print(f"[엑셀 단품 기록 실패]: {e}")
 
-    def direct_finalize_excel_group(self, model_name, box_qr, box_time, items, header_text):
+    def direct_finalize_excel_group(self, model_name, pallet_code, box_qr, box_time, items, header_text):
         with self.file_lock:
             try:
                 filename = get_quarter_filename(model_name)
                 filepath = os.path.join(BASE_DIR, filename)
                 wb, ws = self.open_or_init_workbook(filepath)
 
-                item_codes = set(it["code"] for it in items)
+                item_codes = set(it["code"].strip().upper() for it in items)
 
                 for row in reversed(list(ws.iter_rows(min_row=2, max_row=ws.max_row))):
-                    dmc_val = str(row[3].value).strip() if row[3].value else ""
+                    dmc_val = str(row[4].value).strip().upper() if row[4].value else ""
                     if dmc_val in item_codes:
-                        row[0].value = box_qr
-                        row[1].value = box_time
+                        row[0].value = pallet_code
+                        row[1].value = box_qr
+                        row[2].value = box_time
                         item_codes.remove(dmc_val)
                     if not item_codes:
                         break
@@ -1223,41 +1608,23 @@ class QRScanStationApp:
                     top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
                 )
 
-                header_row = [box_qr, box_time, "HEADER", header_text, box_time, "OK", ""]
+                header_row = [pallet_code, box_qr, box_time, "HEADER", header_text, box_time, "OK", ""]
                 ws.append(header_row)
                 h_row_idx = ws.max_row
-                for col in range(1, 8):
+                for col in range(1, 9):
                     c = ws.cell(row=h_row_idx, column=col)
                     c.border = thin_border
-                    c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6, 7] else "left", vertical="center")
+                    c.alignment = Alignment(horizontal="center" if col in [3, 4, 6, 7, 8] else "left", vertical="center")
 
                 wb.save(filepath)
                 hide_file(filepath)
             except Exception as e:
                 print(f"[그룹핑 엑셀 기록 실패]: {e}")
 
-    def direct_update_manager_label(self, model_name, dmc_code, label_qr, ts_full):
+    def direct_handle_dmc_duplicate(self, model_name, raw_code, day_str, time_str, matched_label, dup_text, pallet_code):
         with self.file_lock:
             try:
-                filename = get_quarter_filename(model_name)
-                filepath = os.path.join(BASE_DIR, filename)
-                wb, ws = self.open_or_init_workbook(filepath)
-
-                for row in reversed(list(ws.iter_rows(min_row=2, max_row=ws.max_row))):
-                    d_val = str(row[3].value).strip() if row[3].value else ""
-                    if d_val == dmc_code:
-                        row[0].value = label_qr
-                        row[1].value = ts_full
-                        break
-
-                wb.save(filepath)
-                hide_file(filepath)
-            except Exception:
-                pass
-
-    def direct_handle_dmc_duplicate(self, model_name, raw_code, day_str, time_str, matched_label, dup_text):
-        with self.file_lock:
-            try:
+                clean_target = raw_code.strip().upper()
                 files = self.get_all_model_files(model_name)
                 current_quarter_file = os.path.join(BASE_DIR, get_quarter_filename(model_name))
                 if current_quarter_file not in files:
@@ -1279,28 +1646,27 @@ class QRScanStationApp:
                     modified = False
 
                     for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-                        lbl_cell = row[0]
-                        seq_cell = row[2]
-                        dmc_cell = row[3]
-                        res_cell = row[5]
-                        content_cell = row[6] if len(row) >= 7 else None
+                        seq_cell = row[3]
+                        dmc_cell = row[4]
+                        res_cell = row[6]
+                        content_cell = row[7] if len(row) >= 8 else None
 
                         dmc_val = str(dmc_cell.value).strip() if dmc_cell.value else ""
-                        lbl_val = str(lbl_cell.value).strip() if lbl_cell.value else ""
+                        lbl_val = str(row[1].value).strip() if row[1].value else ""
 
-                        clean_val = dmc_val.replace("[중복스캔] ", "").replace("[중복 스캔] ", "")
-                        if clean_val == raw_code and res_cell.value != "NG":
+                        clean_val = dmc_val.replace("[중복스캔] ", "").replace("[중복 스캔] ", "").upper()
+                        if clean_val == clean_target and res_cell.value != "NG":
                             res_cell.value = "NG"
                             if content_cell:
                                 content_cell.value = dup_text
-                            for c in row[:7]:
+                            for c in row[:8]:
                                 c.fill = ng_fill
                                 c.font = ng_font
                             modified = True
 
                         elif matched_label and lbl_val == matched_label and (str(seq_cell.value) == "HEADER" or "[" in dmc_val):
                             res_cell.value = "NG"
-                            for c in row[:7]:
+                            for c in row[:8]:
                                 c.fill = ng_fill
                                 c.font = ng_font
                             modified = True
@@ -1311,15 +1677,15 @@ class QRScanStationApp:
 
                 wb_cur, ws_cur = self.open_or_init_workbook(current_quarter_file)
                 ts_full = f"{day_str} {time_str}"
-                row_data = ["-", "-", "-", raw_code, ts_full, "NG", dup_text]
+                row_data = [pallet_code, "-", "-", "-", raw_code, ts_full, "NG", dup_text]
                 ws_cur.append(row_data)
                 h_idx = ws_cur.max_row
-                for col in range(1, 8):
+                for col in range(1, 9):
                     c = ws_cur.cell(row=h_idx, column=col)
                     c.border = thin_border
                     c.fill = ng_fill
                     c.font = ng_font
-                    c.alignment = Alignment(horizontal="center" if col in [2, 3, 5, 6, 7] else "left", vertical="center")
+                    c.alignment = Alignment(horizontal="center" if col in [3, 4, 6, 7, 8] else "left", vertical="center")
 
                 wb_cur.save(current_quarter_file)
                 hide_file(current_quarter_file)
@@ -1396,14 +1762,27 @@ class QRScanStationApp:
                 last_known_label_qr = ""
 
                 for row in ws.iter_rows(min_row=2, values_only=True):
-                    if not row or len(row) < 6:
+                    if not row or len(row) < 7:
                         continue
-                    label_qr = row[0]
-                    box_time = row[1]
-                    dmc_code = row[3]
-                    dmc_time = row[4]
-                    res = row[5]
-                    content = row[6] if len(row) >= 7 and row[6] else ""
+                    
+                    if len(row) >= 8:
+                        pallet_val = str(row[0]).strip() if row[0] and str(row[0]).strip() != "-" else ""
+                        label_qr = row[1]
+                        box_time = row[2]
+                        seq_val = row[3]
+                        dmc_code = row[4]
+                        dmc_time = row[5]
+                        res = row[6]
+                        content = row[7] if len(row) >= 8 and row[7] else ""
+                    else:
+                        pallet_val = ""
+                        label_qr = row[0]
+                        box_time = row[1]
+                        seq_val = row[2]
+                        dmc_code = row[3]
+                        dmc_time = row[4]
+                        res = row[5]
+                        content = row[6] if len(row) >= 7 and row[6] else ""
 
                     if label_qr and str(label_qr).strip() != "-":
                         last_known_label_qr = str(label_qr).strip()
@@ -1429,16 +1808,20 @@ class QRScanStationApp:
                     dmc_val = "" if not dmc_code or dmc_code == "-" else str(dmc_code)
                     content_val = str(content).strip() if content else ""
 
-                    clean_dmc = dmc_val.replace("[중복스캔] ", "").replace("[중복 스캔] ", "")
-                    if not (clean_dmc.upper().startswith(target_upper) or lbl_val.upper().startswith(target_upper)):
+                    clean_dmc = dmc_val.replace("[중복스캔] ", "").replace("[중복 스캔] ", "").upper()
+                    if not (clean_dmc.startswith(target_upper) or lbl_val.upper().startswith(target_upper) or "PALLET" in dmc_val):
                         continue
 
-                    matched.append((r_day, r_time, lbl_val, dmc_val, str(res), content_val))
+                    matched.append((pallet_val, r_day, r_time, lbl_val, dmc_val, str(res), content_val))
 
                 hide_file(filepath)
 
             for m in reversed(matched):
-                tag = "ng_row" if m[4] == "NG" else ""
+                tag = ""
+                if m[5] == "NG":
+                    tag = "ng_row"
+                elif "Pallet" in str(m[4]):
+                    tag = "pallet_row"
                 self.tree_recode.insert("", tk.END, values=m, tags=(tag,) if tag else ())
 
         except Exception:
@@ -1466,7 +1849,7 @@ class QRScanStationApp:
             ws = wb.active
             ws.title = "Re-code"
 
-            headers = ["DAY", "TIME", "Label QR", "DMC", "판정", "Content"]
+            headers = ["Pallet Label QR", "DAY", "TIME", "Label QR", "DMC", "판정", "Content"]
             ws.append(headers)
 
             header_fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
@@ -1476,7 +1859,7 @@ class QRScanStationApp:
                 top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9')
             )
 
-            for col in range(1, 7):
+            for col in range(1, 8):
                 cell = ws.cell(row=1, column=col)
                 cell.fill = header_fill
                 cell.font = header_font
@@ -1485,17 +1868,18 @@ class QRScanStationApp:
             for idx, item_id in enumerate(items, start=2):
                 row_vals = self.tree_recode.item(item_id, "values")
                 ws.append(list(row_vals))
-                for col in range(1, 7):
+                for col in range(1, 8):
                     c = ws.cell(row=idx, column=col)
                     c.border = thin_border
-                    c.alignment = Alignment(horizontal="center" if col in [1, 2, 5, 6] else "left", vertical="center")
+                    c.alignment = Alignment(horizontal="center" if col in [2, 3, 6, 7] else "left", vertical="center")
 
-            ws.column_dimensions['A'].width = 14
+            ws.column_dimensions['A'].width = 30
             ws.column_dimensions['B'].width = 14
-            ws.column_dimensions['C'].width = 46
-            ws.column_dimensions['D'].width = 34
-            ws.column_dimensions['E'].width = 12
-            ws.column_dimensions['F'].width = 16
+            ws.column_dimensions['C'].width = 14
+            ws.column_dimensions['D'].width = 46
+            ws.column_dimensions['E'].width = 34
+            ws.column_dimensions['F'].width = 12
+            ws.column_dimensions['G'].width = 16
 
             wb.save(save_path)
             messagebox.showinfo("Success", f"Saved successfully:\n{save_path}")
