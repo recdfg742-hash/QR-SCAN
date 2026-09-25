@@ -17,11 +17,11 @@ except ImportError:
     winsound = None
 
 # ==========================================
-# 1. REAR 전용 모델 설정
+# 1. FRONT 전용 모델 설정
 # ==========================================
 MODEL_CONFIG = {
-    'S-REAR':  'MPL02914AD',
-    'R-REAR':  'MPL02925AD'
+    'S-FRONT': 'MPL02916AD',
+    'R-FRONT': 'MPL02926AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
@@ -35,8 +35,8 @@ def get_base_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 BASE_DIR = get_base_dir()
-COUNT_FILE = os.path.join(BASE_DIR, "counts_rear.json")
-STATE_FILE = os.path.join(BASE_DIR, "pallet_state_rear.json")
+COUNT_FILE = os.path.join(BASE_DIR, "counts_front.json")
+STATE_FILE = os.path.join(BASE_DIR, "pallet_state_front.json")
 
 FILE_ATTRIBUTE_NORMAL = 0x80
 FILE_ATTRIBUTE_HIDDEN = 0x02
@@ -65,7 +65,7 @@ def get_quarter_filename(model_name, dt=None):
 
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
         "tab_grouping": "  Grouping  ",
@@ -101,6 +101,8 @@ LANG_PACK = {
         "ng_model_msg": "[NG: 선택 모델과 바코드 코드가 일치하지 않습니다]\n\n현재 선택 모델: {model} ({target})\n스캔된 코드: {code}\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
         "ng_pallet_model_title": "⚠️ NG - Pallet QR 모델 불일치",
         "ng_pallet_model_msg": "[NG: Pallet QR 모델 코드가 일치하지 않습니다]\n\n현재 선택 모델: {model} ({target})\n스캔 Pallet QR: {code}\n\n올바른 Pallet QR을 준비한 뒤 관리자 비밀번호로 해제하세요.",
+        "ng_pallet_dup_title": "🚫 NG - Pallet QR 중복/순서 오류",
+        "ng_pallet_dup_msg": "[NG: Pallet QR 중복 리딩 또는 박스 미완료]\n\n1) 최소 1개 이상의 박스를 완료한 후에만 팔레트 교체가 가능합니다.\n2) 이미 사용된 Pallet QR은 중복 등록할 수 없습니다.\n\n관리자 비밀번호를 입력하여 해제하세요.",
         "ng_label_dup_title": "⚠️ Label QR NG - 중복 스캔",
         "ng_label_dup_msg": "[Label QR NG: 이미 사용된 Label QR입니다]\n\n스캔 Label QR: {code}...\n이미 등록/포장 완료된 중복 라벨입니다.\n\n관리자 비밀번호 6자리를 입력하여 해제하세요.",
         "ng_group_title": "⚠️ Grouping NG - 수량 불일치",
@@ -122,7 +124,7 @@ LANG_PACK = {
         "pw_err": "비밀번호가 올바르지 않습니다."
     },
     "English": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Password Setting",
         "tab_scan": "  QR Scan  ",
         "tab_grouping": "  Grouping  ",
@@ -158,6 +160,8 @@ LANG_PACK = {
         "ng_model_msg": "[NG: Scanned barcode does not match selected model]\n\nSelected Model: {model} ({target})\nScanned Code: {code}\n\nEnter 6-digit Admin Password to unlock.",
         "ng_pallet_model_title": "⚠️ NG - Pallet Model Mismatch",
         "ng_pallet_model_msg": "[NG: Pallet QR model code does not match]\n\nSelected Model: {model} ({target})\nScanned Pallet QR: {code}\n\nEnter 6-digit Admin Password to unlock.",
+        "ng_pallet_dup_title": "🚫 NG - Duplicate Pallet Scan",
+        "ng_pallet_dup_msg": "[NG: Pallet QR Duplicate or Sequence Error]\n\n1) At least 1 box must be completed before closing the pallet.\n2) Cannot re-scan an already closed Pallet QR.\n\nEnter Admin Password to unlock.",
         "ng_label_dup_title": "⚠️ Label QR NG - Duplicate Label",
         "ng_label_dup_msg": "[Label QR NG: This Label QR is already used]\n\nScanned Label: {code}...\nDuplicate box label detected.\n\nEnter 6-digit Admin Password to unlock.",
         "ng_group_title": "⚠️ Grouping NG - Quantity Mismatch",
@@ -179,7 +183,7 @@ LANG_PACK = {
         "pw_err": "Incorrect Password."
     },
     "Polski": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "QR SCAN STATION [FRONT]",
         "pw_setting": "⚙ Ustawienie hasła",
         "tab_scan": "  Skan QR  ",
         "tab_grouping": "  Grupowanie  ",
@@ -215,6 +219,8 @@ LANG_PACK = {
         "ng_model_msg": "[NG: Zeskanowany kod nie pasuje do wybranego modelu]\n\nWybrany model: {model} ({target})\nKod: {code}\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
         "ng_pallet_model_title": "⚠️ NG - Niezgodność modelu palety",
         "ng_pallet_model_msg": "[NG: Kod modelu na etykiecie palety nie pasuje]\n\nWybrany model: {model} ({target})\nPaleta: {code}\n\nWprowadź 6-cyfrowe hasło administratora.",
+        "ng_pallet_dup_title": "🚫 NG - Błąd duplikatu palety",
+        "ng_pallet_dup_msg": "[NG: Błąd skanowania palety]\n\n1) Należy ukończyć co najmniej 1 pudełko przed zamknięciem palety.\n2) Nie można ponownie użyć zarejestrowanej palety.\n\nWprowadź hasło administratora.",
         "ng_label_dup_title": "⚠️ Label QR NG - Duplikat etykiety",
         "ng_label_dup_msg": "[Label QR NG: Ta etykieta została 이미 사용되었습니다]\n\nZeskanowana etykieta: {code}...\nWykryto duplikat etykiety pudełka.\n\nWprowadź 6-cyfrowe hasło administratora, aby odblokować.",
         "ng_group_title": "⚠️ Grouping NG - Niezgodność ilości",
@@ -250,13 +256,13 @@ COLOR_NG = "#dc3545"
 class QRScanStationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION [REAR]")
+        self.root.title("QR SCAN STATION [FRONT]")
         self.root.geometry("1420x820")
         self.root.minsize(1240, 740)
         self.root.configure(bg=BG_MAIN)
 
         self.current_lang = tk.StringVar(value="한국어")
-        self.current_model = tk.StringVar(value='S-REAR')
+        self.current_model = tk.StringVar(value='S-FRONT')
         self.admin_password = DEFAULT_PASSWORD
         self.model_session_id = 0
 
@@ -273,6 +279,7 @@ class QRScanStationApp:
 
         self.scanned_history_by_model = {m: set() for m in MODEL_CONFIG}
         self.scanned_label_by_model = {m: set() for m in MODEL_CONFIG}
+        self.scanned_pallet_by_model = {m: set() for m in MODEL_CONFIG}
         self.sorting_list_by_model = {m: set() for m in MODEL_CONFIG}
 
         self.pending_items = []
@@ -382,7 +389,7 @@ class QRScanStationApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION  [REAR]", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="QR  SCAN  STATION  [FRONT]", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -422,7 +429,6 @@ class QRScanStationApp:
         self.notebook = ttk.Notebook(self.root, style="Dark.TNotebook")
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
 
-        # 3개 탭 구성 (QR Scan, Grouping, Re-code)
         self.tab_scan = tk.Frame(self.notebook, bg=BG_MAIN)
         self.notebook.add(self.tab_scan, text=self.t("tab_scan"))
 
@@ -558,9 +564,6 @@ class QRScanStationApp:
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-    # ==========================================
-    # Grouping 전용 탭 (DMC 제외, Pallet-Box Grouping 내역 전용)
-    # ==========================================
     def build_grouping_tab(self):
         group_frame = tk.Frame(self.tab_grouping, bg=BG_MAIN)
         group_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
@@ -1023,8 +1026,9 @@ class QRScanStationApp:
 
     def get_all_model_files(self, model_name):
         safe_model = model_name.replace('-', '_')
+        # 타 모델(FRONT vs REAR)과 파일명이 섞이지 않도록 정밀 매칭
         pattern = os.path.join(BASE_DIR, f"Y*_*Q_{safe_model}.xlsx")
-        files = glob.glob(pattern)
+        files = [f for f in glob.glob(pattern) if f.endswith(f"_{safe_model}.xlsx")]
         old_file = os.path.join(BASE_DIR, f"{model_name}.xlsx")
         if os.path.exists(old_file) and old_file not in files:
             files.append(old_file)
@@ -1044,6 +1048,7 @@ class QRScanStationApp:
                 last_label = ""
                 loaded_pending = []
                 self.sorting_list_by_model[model_name].clear()
+                self.scanned_pallet_by_model[model_name].clear()
 
                 for filepath in files:
                     unhide_file(filepath)
@@ -1090,6 +1095,9 @@ class QRScanStationApp:
                         res_str = str(res).strip() if res else "OK"
                         content_str = str(content).strip() if content else ""
 
+                        if pallet_val:
+                            self.scanned_pallet_by_model[model_name].add(pallet_val)
+
                         if seq_val == "Final HEADER":
                             rows_to_insert.append((pallet_val, "", "", "", dmc_str, res_str, content_str))
                             continue
@@ -1105,7 +1113,7 @@ class QRScanStationApp:
                             loaded_pending.clear()
                             continue
 
-                        ts_str = str(dmc_time if dmc_time and str(dmc_time).strip() != "-" else box_time)
+                        ts_str = str(dmc_time if dmc_time and dmc_time != "-" else box_time)
                         if not ts_str or ts_str == "-":
                             continue
 
@@ -1161,7 +1169,7 @@ class QRScanStationApp:
         threading.Thread(target=_loader, daemon=True).start()
 
     # ==========================================
-    # 5. 스캔 판정 로직 (Pallet QR 모델 검증 탑재)
+    # 5. 스캔 판정 로직 (Pallet QR 모델 검증 및 중복/순서 엄격 제어)
     # ==========================================
     def is_pallet_qr(self, code):
         c = code.strip().upper()
@@ -1198,9 +1206,9 @@ class QRScanStationApp:
         # Pallet QR 스캔 처리
         # ----------------------------------------------------
         if self.is_pallet_qr(raw_code):
-            upper_pallet_code = raw_code.upper()  # 1. 무조건 대문자 변환
+            upper_pallet_code = raw_code.upper()  # 1. 무조건 대문자
 
-            # 2. Pallet QR 내부 ITEM 코드 일치성 검증 (모델 불일치 차단)
+            # 2. 모델 코드 불일치 검증
             if target_code not in upper_pallet_code:
                 self.set_status("Pallet NG", "#dc3545", "#3a1c1f")
                 self.open_lock_popup(
@@ -1210,6 +1218,7 @@ class QRScanStationApp:
                 )
                 return
 
+            # 단품 10개 찍는 도중 스캔 불가
             if len(self.pending_items) > 0:
                 self.set_status("Pallet NG", "#dc3545", "#3a1c1f")
                 self.open_lock_popup(
@@ -1220,13 +1229,28 @@ class QRScanStationApp:
                 return
 
             prev_pallet = self.pallet_state[curr_model]["current_pallet"]
-            
-            if prev_pallet:
+            curr_box_count = self.pallet_state[curr_model]["box_count"]
+
+            # 3. 중복 스캔 및 연속 Pallet QR 방지 검증:
+            # - 기존 팔레트가 있는데 박스가 0개인 상태에서 또 팔레트를 찍거나
+            # - 동일한 팔레트 QR을 다시 중복 스캔 시 차단
+            if (prev_pallet and curr_box_count == 0) or (upper_pallet_code in self.scanned_pallet_by_model[curr_model]):
+                self.set_status("Pallet NG", "#dc3545", "#3a1c1f")
+                self.open_lock_popup(
+                    title_text=self.t("ng_pallet_dup_title"),
+                    msg=self.t("ng_pallet_dup_msg"),
+                    header_bg="#2d1d20", header_fg="#f87171"
+                )
+                return
+
+            # 최소 1박스 완료 시 정상 Close 후 새 팔레트 Start
+            if prev_pallet and curr_box_count >= 1:
                 self.direct_append_pallet_header(curr_model, prev_pallet, "Final HEADER", "[Pallet Grouping Done]", timestamp_full)
                 self.tree.insert("", 0, values=(prev_pallet, "", "", "", "[Pallet Grouping Done]", "OK", ""), tags=("pallet_row",))
 
             self.pallet_state[curr_model]["current_pallet"] = upper_pallet_code
             self.pallet_state[curr_model]["box_count"] = 0
+            self.scanned_pallet_by_model[curr_model].add(upper_pallet_code)
             self.save_pallet_state()
             self.update_pallet_status_ui()
 
@@ -1445,7 +1469,7 @@ class QRScanStationApp:
         self.scan_entry.focus_set()
 
     # ==========================================
-    # 6. 엑셀 8개 열(Pallet 열 포함) 안전 I/O
+    # 6. 엑셀 8개 열 격리 I/O
     # ==========================================
     def open_or_init_workbook(self, filepath):
         unhide_file(filepath)
