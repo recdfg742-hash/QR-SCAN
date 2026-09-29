@@ -19,7 +19,73 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # ==========================================
-# 1. REAR 전용 모델 설정
+# 1. 파일 무단 이동/복사/삭제 방지 암호 인증
+# ==========================================
+PROTECTION_PASSWORD = 'Aluko000'
+
+def verify_file_protection():
+    # 간단한 보안 인증 창 (최초 실행 시 암호 'Aluko000' 입력 필수)
+    auth_root = tk.Tk()
+    auth_root.title("Aluko Security Check")
+    auth_root.geometry("340x180")
+    auth_root.configure(bg="#1a1f26")
+    auth_root.resizable(False, False)
+
+    # 화면 중앙 배치
+    auth_root.update_idletasks()
+    x = (auth_root.winfo_screenwidth() - 340) // 2
+    y = (auth_root.winfo_screenheight() - 180) // 2
+    auth_root.geometry(f"340x180+{x}+{y}")
+
+    tk.Label(auth_root, text="🔒 보안 인증 [Aluko Security]\n프로그램 실행 암호를 입력하세요.", 
+             font=("맑은 고딕", 10, "bold"), fg="#e1e4ea", bg="#1a1f26", justify=tk.CENTER).pack(pady=(20, 10))
+
+    pw_box = tk.Entry(auth_root, show="*", font=("Arial", 14), justify="center", bg="#15181e", fg="#ffffff")
+    pw_box.pack(fill=tk.X, padx=30, pady=5)
+    pw_box.focus_set()
+
+    err_lbl = tk.Label(auth_root, text="", font=("맑은 고딕", 9), fg="#ff6b6b", bg="#1a1f26")
+    err_lbl.pack()
+
+    authenticated = [False]
+
+    def check_pw(event=None):
+        if pw_box.get() == PROTECTION_PASSWORD:
+            authenticated[0] = True
+            auth_root.destroy()
+        else:
+            err_lbl.config(text="보안 암호가 올바르지 않습니다.")
+            pw_box.delete(0, tk.END)
+
+    pw_box.bind("<Return>", check_pw)
+    tk.Button(auth_root, text="인증 및 실행", command=check_pw, bg="#28a745", fg="#ffffff",
+              font=("맑은 고딕", 10, "bold"), relief="flat", padx=10, pady=2).pack(pady=10)
+
+    auth_root.mainloop()
+    if not authenticated[0]:
+        sys.exit(0)
+
+verify_file_protection()
+
+# ==========================================
+# 2. 중복 실행 방지 (Single Instance Lock)
+# ==========================================
+SINGLE_INSTANCE_MUTEX = None
+if os.name == 'nt':
+    try:
+        kernel32 = ctypes.windll.kernel32
+        MUTEX_NAME = "Aluko_Rear_QR_Reader_Mutex"
+        SINGLE_INSTANCE_MUTEX = kernel32.CreateMutexW(None, False, MUTEX_NAME)
+        if kernel32.GetLastError() == 183:
+            root_temp = tk.Tk()
+            root_temp.withdraw()
+            messagebox.showwarning("중복 실행 경고", "이미 Aluko_Rear_QR Reader 프로그램이 실행 중입니다.")
+            sys.exit(0)
+    except Exception:
+        pass
+
+# ==========================================
+# 3. REAR 전용 모델 설정
 # ==========================================
 MODEL_CONFIG = {
     'S-REAR': 'MPL02914AD',
@@ -71,7 +137,7 @@ def get_quarter_filename(model_name, dt=None):
 
 LANG_PACK = {
     "한국어": {
-        "title": "QR SCAN STATION [REAR]",
+        "title": "Aluko_Rear_QR Reader",
         "pw_setting": "⚙ 비밀번호 설정",
         "tab_scan": "  QR Scan  ",
         "tab_grouping": "  Grouping  ",
@@ -142,7 +208,7 @@ ACCENT_YELLOW = "#f59f00"
 class QRScanStationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("QR SCAN STATION [REAR]")
+        self.root.title("Aluko_Rear_QR Reader")
         self.root.geometry("1440x880")
         self.root.minsize(1280, 780)
         self.root.configure(bg=BG_MAIN)
@@ -200,22 +266,25 @@ class QRScanStationApp:
     def on_closing(self):
         self.root.destroy()
 
-    # ==========================================
-    # MANAGER MODE (테이블 행 선택 삭제 및 Pallet 토글)
-    # ==========================================
-    def toggle_manager_mode(self):
+    def trigger_hidden_delete_action(self):
         if self.active_popup or self.pallet_wait_popup:
             return
 
+        selected_items = self.tree.selection()
+        if not selected_items:
+            messagebox.showwarning("선택 없음", "삭제할 기록 행을 [REAR 기록] 테이블에서 마우스로 먼저 선택해 주세요.", parent=self.root)
+            self.scan_entry.focus_set()
+            return
+
         win = tk.Toplevel(self.root)
-        win.title("MANAGER AUTH")
+        win.title("MANAGER AUTH [DELETE]")
         win.configure(bg=BG_PANEL)
         win.transient(self.root)
         win.grab_set()
 
         self.center_popup(win, 360, 200)
 
-        tk.Label(win, text="MANAGER MODE\n관리자 비밀번호 6자리를 입력하세요.", 
+        tk.Label(win, text="관리자 권한 확인\n비밀번호 6자리를 입력하세요.", 
                  font=("맑은 고딕", 10, "bold"), fg=TEXT_COLOR, bg=BG_PANEL).pack(pady=(15, 8))
 
         pw_entry = tk.Entry(win, show="*", font=("Arial", 14), justify="center", bg=BG_INPUT, fg="#ffffff")
@@ -225,77 +294,19 @@ class QRScanStationApp:
         lbl_err = tk.Label(win, text="", font=("맑은 고딕", 9), fg="#ff6b6b", bg=BG_PANEL)
         lbl_err.pack()
 
-        def verify(event=None):
+        def verify_and_delete(event=None):
             if pw_entry.get() == self.admin_password:
                 win.destroy()
-                self.open_manager_actions_dialog()
+                self.delete_selected_treeview_row_direct(selected_items)
             else:
                 lbl_err.config(text=self.t("pw_err"))
                 pw_entry.delete(0, tk.END)
 
-        pw_entry.bind("<Return>", verify)
-        tk.Button(win, text="로그인", command=verify, bg="#28a745", fg="#ffffff",
+        pw_entry.bind("<Return>", verify_and_delete)
+        tk.Button(win, text="삭제 실행", command=verify_and_delete, bg="#dc3545", fg="#ffffff",
                   relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=3).pack(pady=10)
 
-    def open_manager_actions_dialog(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title("MANAGER CONTROL PANEL")
-        dialog.configure(bg=BG_PANEL)
-        dialog.transient(self.root)
-        dialog.grab_set()
-
-        self.center_popup(dialog, 460, 310)
-
-        tk.Label(dialog, text="[ 관리자 작업 선택 ]", font=("맑은 고딕", 12, "bold"), fg="#38bdf8", bg=BG_PANEL).pack(pady=(18, 10))
-
-        def act_rescan_dmc():
-            self.is_manager_mode = True
-            self.btn_manager.config(bg="#f59f00", fg="#000000", text=self.t("manager_btn_on"))
-            dialog.destroy()
-            messagebox.showinfo("안내", "중복 단품 재스캔 모드가 활성화되었습니다.\n바코드를 1회 스캔하면 자동으로 일반 모드로 전환됩니다.", parent=self.root)
-            self.scan_entry.focus_set()
-
-        btn1 = tk.Button(dialog, text="🔄 중복 단품 DMC 재스캔 활성화", command=act_rescan_dmc,
-                         bg="#1e3a5f", fg="#93c5fd", activebackground="#2b5278", activeforeground="#ffffff",
-                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=7, cursor="hand2")
-        btn1.pack(fill=tk.X, padx=30, pady=4)
-
-        status_txt = "현재: ON (스캔 필수)" if self.pallet_qr_feature_enabled else "현재: OFF (스캔 건너뜀)"
-        btn_color = "#374151" if self.pallet_qr_feature_enabled else "#0369a1"
-
-        def act_toggle_pallet_qr():
-            self.pallet_qr_feature_enabled = not self.pallet_qr_feature_enabled
-            new_st = "ON" if self.pallet_qr_feature_enabled else "OFF"
-            self.update_pallet_status_ui()
-            dialog.destroy()
-            messagebox.showinfo("설정 변경", f"Pallet QR 리딩 기능이 [{new_st}] 상태로 변경되었습니다.\n(※ 12박스 완료 시 자동으로 다시 ON으로 켜집니다.)", parent=self.root)
-
-        btn2 = tk.Button(dialog, text=f"📦 Pallet QR 리딩 기능 토글 [{status_txt}]", command=act_toggle_pallet_qr,
-                         bg=btn_color, fg="#ffffff", activebackground="#475569", activeforeground="#ffffff",
-                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=7, cursor="hand2")
-        btn2.pack(fill=tk.X, padx=30, pady=4)
-
-        # [요청 반영] 테이블에서 선택한 행 삭제 기능 연동 버튼
-        def act_delete_selected_row():
-            dialog.destroy()
-            self.delete_selected_treeview_row()
-
-        btn3 = tk.Button(dialog, text="🗑️ 테이블에서 선택한 기록 및 카운터 삭제", command=act_delete_selected_row,
-                         bg="#581c87", fg="#e9d5ff", activebackground="#7e22ce", activeforeground="#ffffff",
-                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=7, cursor="hand2")
-        btn3.pack(fill=tk.X, padx=30, pady=4)
-
-    def delete_selected_treeview_row(self):
-        selected_items = self.tree.selection()
-        if not selected_items:
-            messagebox.showwarning("선택 없음", "삭제할 기록 행을 [REAR 기록] 테이블에서 마우스로 먼저 선택해 주세요.", parent=self.root)
-            self.scan_entry.focus_set()
-            return
-
-        if not messagebox.askyesno("삭제 확인", "선택한 기록을 엑셀 파일과 화면에서 영구 삭제하시겠습니까?", parent=self.root):
-            self.scan_entry.focus_set()
-            return
-
+    def delete_selected_treeview_row_direct(self, selected_items):
         curr_model = self.current_model.get()
         files = self.get_all_model_files(curr_model)
         deleted_count = 0
@@ -307,7 +318,6 @@ class QRScanStationApp:
             if not row_vals or len(row_vals) < 7:
                 continue
 
-            target_pallet = str(row_vals[0]).strip().upper()
             target_label = str(row_vals[3]).strip().upper()
             target_dmc = str(row_vals[4]).strip().upper()
             target_time = str(row_vals[2]).strip()
@@ -352,11 +362,88 @@ class QRScanStationApp:
             self.save_model_counts()
             self.update_stat_cards()
 
-            messagebox.showinfo("삭제 완료", f"선택한 행이 성공적으로 삭제되었습니다.\n(OK: -{ok_removed}, NG: -{ng_removed})", parent=self.root)
+            self.pallet_state[curr_model]["current_pallet"] = ""
+            self.pallet_state[curr_model]["box_count"] = 0
+            self.save_pallet_state()
+            self.update_pallet_status_ui()
+
+            messagebox.showinfo("삭제 완료", f"선택한 기록이 성공적으로 삭제되었습니다.\n(OK: -{ok_removed}, NG: -{ng_removed})", parent=self.root)
         else:
             messagebox.showwarning("파일 반영 실패", "엑셀 파일에서 일치하는 행을 찾지 못했습니다.", parent=self.root)
 
         self.scan_entry.focus_set()
+
+    def toggle_manager_mode(self):
+        if self.active_popup or self.pallet_wait_popup:
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("MANAGER AUTH")
+        win.configure(bg=BG_PANEL)
+        win.transient(self.root)
+        win.grab_set()
+
+        self.center_popup(win, 360, 200)
+
+        tk.Label(win, text="MANAGER MODE\n관리자 비밀번호 6자리를 입력하세요.", 
+                 font=("맑은 고딕", 10, "bold"), fg=TEXT_COLOR, bg=BG_PANEL).pack(pady=(15, 8))
+
+        pw_entry = tk.Entry(win, show="*", font=("Arial", 14), justify="center", bg=BG_INPUT, fg="#ffffff")
+        pw_entry.pack(pady=5)
+        pw_entry.focus_set()
+
+        lbl_err = tk.Label(win, text="", font=("맑은 고딕", 9), fg="#ff6b6b", bg=BG_PANEL)
+        lbl_err.pack()
+
+        def verify(event=None):
+            if pw_entry.get() == self.admin_password:
+                win.destroy()
+                self.open_manager_actions_dialog()
+            else:
+                lbl_err.config(text=self.t("pw_err"))
+                pw_entry.delete(0, tk.END)
+
+        pw_entry.bind("<Return>", verify)
+        tk.Button(win, text="로그인", command=verify, bg="#28a745", fg="#ffffff",
+                  relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=3).pack(pady=10)
+
+    def open_manager_actions_dialog(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("MANAGER CONTROL PANEL")
+        dialog.configure(bg=BG_PANEL)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        self.center_popup(dialog, 460, 200)
+
+        tk.Label(dialog, text="[ 관리자 작업 선택 ]", font=("맑은 고딕", 12, "bold"), fg="#38bdf8", bg=BG_PANEL).pack(pady=(18, 12))
+
+        def act_rescan_dmc():
+            self.is_manager_mode = True
+            self.btn_manager.config(bg="#f59f00", fg="#000000", text=self.t("manager_btn_on"))
+            dialog.destroy()
+            messagebox.showinfo("안내", "중복 단품 재스캔 모드가 활성화되었습니다.\n바코드를 1회 스캔하면 자동으로 일반 모드로 전환됩니다.", parent=self.root)
+            self.scan_entry.focus_set()
+
+        btn1 = tk.Button(dialog, text="🔄 중복 단품 DMC 재스캔 활성화", command=act_rescan_dmc,
+                         bg="#1e3a5f", fg="#93c5fd", activebackground="#2b5278", activeforeground="#ffffff",
+                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=8, cursor="hand2")
+        btn1.pack(fill=tk.X, padx=30, pady=5)
+
+        status_txt = "현재: ON (스캔 필수)" if self.pallet_qr_feature_enabled else "현재: OFF (스캔 건너뜀)"
+        btn_color = "#374151" if self.pallet_qr_feature_enabled else "#0369a1"
+
+        def act_toggle_pallet_qr():
+            self.pallet_qr_feature_enabled = not self.pallet_qr_feature_enabled
+            new_st = "ON" if self.pallet_qr_feature_enabled else "OFF"
+            self.update_pallet_status_ui()
+            dialog.destroy()
+            messagebox.showinfo("설정 변경", f"Pallet QR 리딩 기능이 [{new_st}] 상태로 변경되었습니다.\n(※ 12박스 완료 시 자동으로 다시 ON으로 켜집니다.)", parent=self.root)
+
+        btn2 = tk.Button(dialog, text=f"📦 Pallet QR 리딩 기능 토글 [{status_txt}]", command=act_toggle_pallet_qr,
+                         bg=btn_color, fg="#ffffff", activebackground="#475569", activeforeground="#ffffff",
+                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=8, cursor="hand2")
+        btn2.pack(fill=tk.X, padx=30, pady=5)
 
     def load_model_counts(self):
         default_counts = {m: {"total": 0, "ok": 0, "ng": 0} for m in MODEL_CONFIG}
@@ -440,7 +527,7 @@ class QRScanStationApp:
         header_frame = tk.Frame(self.root, bg=BG_MAIN, height=45)
         header_frame.pack(fill=tk.X, padx=20, pady=(10, 4))
 
-        tk.Label(header_frame, text="QR  SCAN  STATION  [REAR]", font=("Arial", 12, "bold"), 
+        tk.Label(header_frame, text="Aluko_Rear_QR Reader", font=("Arial", 12, "bold"), 
                  fg=TEXT_COLOR, bg=BG_MAIN).pack(side=tk.LEFT, padx=(0, 15))
 
         self.model_combo = ttk.Combobox(
@@ -476,6 +563,13 @@ class QRScanStationApp:
             relief="flat", font=("맑은 고딕", 9), padx=10, pady=3, cursor="hand2"
         )
         self.btn_pw.pack(side=tk.RIGHT, padx=(0, 15))
+
+        # [요청 반영] 비밀번호 설정 버튼 바로 왼쪽에 배치된 히든 삭제 버튼
+        self.btn_hidden_delete = tk.Button(
+            header_frame, text="", command=self.trigger_hidden_delete_action,
+            bg=BG_MAIN, activebackground=BG_MAIN, bd=0, relief="flat", cursor="arrow", width=3
+        )
+        self.btn_hidden_delete.pack(side=tk.RIGHT, padx=(0, 2))
 
         self.notebook = ttk.Notebook(self.root, style="Dark.TNotebook")
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 10))
@@ -881,7 +975,7 @@ class QRScanStationApp:
     def _trigger_auto_submit_entry(self):
         text = self.scan_entry.get().strip()
         if text:
-            self.process_scan(text)
+            self.process_scan(text.upper())
 
     def setup_global_key_listener(self):
         def _on_key_press(event):
@@ -898,7 +992,6 @@ class QRScanStationApp:
                     scanned_text = "".join(self.global_scan_buffer).strip()
                     self.global_scan_buffer.clear()
                     self.scan_entry.delete(0, tk.END)
-                    # [요청 반영] Caps Lock 대응: 리딩된 텍스트 무조건 대문자 처리
                     if scanned_text:
                         self.process_scan(scanned_text.upper())
             elif event.char and event.char.isprintable():
@@ -1017,7 +1110,7 @@ class QRScanStationApp:
         
         self.pending_items.clear()
         self.pending_tree_ids.clear()
-        self.lbl_pending_status.config(text=self.t("pending_status", count=0))
+        self.lbl_pending_status.config(text=self.t("pending_status", count=len(self.pending_items)))
         self.update_pallet_status_ui()
 
         self.update_stat_cards()
@@ -1184,7 +1277,6 @@ class QRScanStationApp:
             self.root.after_cancel(self.auto_submit_timer)
             self.auto_submit_timer = None
 
-        # [요청 반영] 대문자 강제 변환
         raw_code = raw_code.strip().upper()
         self.scan_entry.delete(0, tk.END)
         self.global_scan_buffer.clear()
