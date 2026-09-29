@@ -5,6 +5,7 @@ import json
 import time
 import glob
 import ctypes
+import hashlib
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -19,26 +20,63 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # ==========================================
-# 1. 파일 무단 이동/복사/삭제 방지 암호 인증
+# 1. 파일 위변조·무단 복사·이동·삭제 방지 보호 가드
 # ==========================================
 PROTECTION_PASSWORD = 'Aluko000'
+INTEGRITY_HASH_FILE = "Aluko_Rear_QR_Reader.lock"
 
-def verify_file_protection():
-    # 간단한 보안 인증 창 (최초 실행 시 암호 'Aluko000' 입력 필수)
+def check_file_integrity_and_lock():
+    """실행 파일의 무단 복사, 이름 변경, 이동 및 삭제를 감지하여 보호"""
+    if not getattr(sys, 'frozen', False):
+        return  # 개발 중인 파이썬 스크립트 상태에서는 패스
+
+    current_exe_path = sys.executable
+    exe_dir = os.path.dirname(current_exe_path)
+    hash_record_path = os.path.join(exe_dir, INTEGRITY_HASH_FILE)
+
+    # 현재 파일의 바이너리 해시값 계산
+    try:
+        with open(current_exe_path, "rb") as f:
+            file_bytes = f.read()
+            current_hash = hashlib.sha256(file_bytes).hexdigest()
+    except Exception:
+        return
+
+    if os.path.exists(hash_record_path):
+        try:
+            with open(hash_record_path, "r", encoding="utf-8") as rf:
+                saved_hash = rf.read().strip()
+            
+            # 해시값이 다르거나 파일이 무단 복사/이동된 경우 암호 입력 요구
+            if saved_hash != current_hash:
+                if not prompt_protection_unlock("프로그램 무단 복사 또는 이동이 감지되었습니다."):
+                    sys.exit(0)
+        except Exception:
+            pass
+    else:
+        # 최초 실행 시 현재 상태를 정상 파일로 락(Lock) 파일에 기록
+        try:
+            with open(hash_record_path, "w", encoding="utf-8") as wf:
+                wf.write(current_hash)
+            if os.name == 'nt':
+                ctypes.windll.kernel32.SetFileAttributesW(str(hash_record_path), 0x02) # 숨김 속성
+        except Exception:
+            pass
+
+def prompt_protection_unlock(reason_msg):
     auth_root = tk.Tk()
-    auth_root.title("Aluko Security Check")
-    auth_root.geometry("340x180")
+    auth_root.title("Aluko Security Protection")
+    auth_root.geometry("360x190")
     auth_root.configure(bg="#1a1f26")
     auth_root.resizable(False, False)
 
-    # 화면 중앙 배치
     auth_root.update_idletasks()
-    x = (auth_root.winfo_screenwidth() - 340) // 2
-    y = (auth_root.winfo_screenheight() - 180) // 2
-    auth_root.geometry(f"340x180+{x}+{y}")
+    x = (auth_root.winfo_screenwidth() - 360) // 2
+    y = (auth_root.winfo_screenheight() - 190) // 2
+    auth_root.geometry(f"360x190+{x}+{y}")
 
-    tk.Label(auth_root, text="🔒 보안 인증 [Aluko Security]\n프로그램 실행 암호를 입력하세요.", 
-             font=("맑은 고딕", 10, "bold"), fg="#e1e4ea", bg="#1a1f26", justify=tk.CENTER).pack(pady=(20, 10))
+    tk.Label(auth_root, text=f"🔒 보안 경고\n{reason_msg}\n관리자 암호를 입력하세요.", 
+             font=("맑은 고딕", 9, "bold"), fg="#ff8787", bg="#1a1f26", justify=tk.CENTER).pack(pady=(15, 8))
 
     pw_box = tk.Entry(auth_root, show="*", font=("Arial", 14), justify="center", bg="#15181e", fg="#ffffff")
     pw_box.pack(fill=tk.X, padx=30, pady=5)
@@ -47,25 +85,24 @@ def verify_file_protection():
     err_lbl = tk.Label(auth_root, text="", font=("맑은 고딕", 9), fg="#ff6b6b", bg="#1a1f26")
     err_lbl.pack()
 
-    authenticated = [False]
+    unlocked = [False]
 
-    def check_pw(event=None):
+    def check_unlock(event=None):
         if pw_box.get() == PROTECTION_PASSWORD:
-            authenticated[0] = True
+            unlocked[0] = True
             auth_root.destroy()
         else:
             err_lbl.config(text="보안 암호가 올바르지 않습니다.")
             pw_box.delete(0, tk.END)
 
-    pw_box.bind("<Return>", check_pw)
-    tk.Button(auth_root, text="인증 및 실행", command=check_pw, bg="#28a745", fg="#ffffff",
-              font=("맑은 고딕", 10, "bold"), relief="flat", padx=10, pady=2).pack(pady=10)
+    pw_box.bind("<Return>", check_unlock)
+    tk.Button(auth_root, text="잠금 해제", command=check_unlock, bg="#dc3545", fg="#ffffff",
+              font=("맑은 고딕", 10, "bold"), relief="flat", padx=10, pady=2).pack(pady=8)
 
     auth_root.mainloop()
-    if not authenticated[0]:
-        sys.exit(0)
+    return unlocked[0]
 
-verify_file_protection()
+check_file_integrity_and_lock()
 
 # ==========================================
 # 2. 중복 실행 방지 (Single Instance Lock)
@@ -85,7 +122,7 @@ if os.name == 'nt':
         pass
 
 # ==========================================
-# 3. REAR 전용 모델 설정
+# 3. REAR 전용 모델 설정 (정식 AD 코드)
 # ==========================================
 MODEL_CONFIG = {
     'S-REAR': 'MPL02914AD',
@@ -564,7 +601,7 @@ class QRScanStationApp:
         )
         self.btn_pw.pack(side=tk.RIGHT, padx=(0, 15))
 
-        # [요청 반영] 비밀번호 설정 버튼 바로 왼쪽에 배치된 히든 삭제 버튼
+        # [요청 반영] 비밀번호 설정 버튼 바로 왼쪽에 투명한 히든 삭제 버튼 배치
         self.btn_hidden_delete = tk.Button(
             header_frame, text="", command=self.trigger_hidden_delete_action,
             bg=BG_MAIN, activebackground=BG_MAIN, bd=0, relief="flat", cursor="arrow", width=3
