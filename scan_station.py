@@ -19,11 +19,11 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # ==========================================
-# 1. REAR 전용 모델 설정
+# 1. REAR 전용 모델 설정 (올바른 AD 코드 적용)
 # ==========================================
 MODEL_CONFIG = {
-    'S-REAR': 'MPL02916AE',
-    'R-REAR': 'MPL02926AE'
+    'S-REAR': 'MPL02914AD',
+    'R-REAR': 'MPL02925AD'
 }
 
 CODE_TO_MODEL = {v: k for k, v in MODEL_CONFIG.items()}
@@ -153,7 +153,7 @@ class QRScanStationApp:
         self.model_session_id = 0
 
         self.is_manager_mode = False
-        self.pallet_qr_feature_enabled = True  # Pallet QR 스캔 기능 기본 ON
+        self.pallet_qr_feature_enabled = True  
 
         self.active_popup = None
         self.pallet_wait_popup = None
@@ -201,7 +201,7 @@ class QRScanStationApp:
         self.root.destroy()
 
     # ==========================================
-    # MANAGER MODE (Pallet QR ON/OFF 토글 포함)
+    # MANAGER MODE (Pallet QR 토글 및 엑셀 행 삭제 기능 포함)
     # ==========================================
     def toggle_manager_mode(self):
         if self.active_popup or self.pallet_wait_popup:
@@ -244,9 +244,9 @@ class QRScanStationApp:
         dialog.transient(self.root)
         dialog.grab_set()
 
-        self.center_popup(dialog, 460, 240)
+        self.center_popup(dialog, 460, 310)
 
-        tk.Label(dialog, text="[ 관리자 작업 선택 ]", font=("맑은 고딕", 12, "bold"), fg="#38bdf8", bg=BG_PANEL).pack(pady=(18, 12))
+        tk.Label(dialog, text="[ 관리자 작업 선택 ]", font=("맑은 고딕", 12, "bold"), fg="#38bdf8", bg=BG_PANEL).pack(pady=(18, 10))
 
         def act_rescan_dmc():
             self.is_manager_mode = True
@@ -257,8 +257,8 @@ class QRScanStationApp:
 
         btn1 = tk.Button(dialog, text="🔄 중복 단품 DMC 재스캔 활성화", command=act_rescan_dmc,
                          bg="#1e3a5f", fg="#93c5fd", activebackground="#2b5278", activeforeground="#ffffff",
-                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=8, cursor="hand2")
-        btn1.pack(fill=tk.X, padx=30, pady=5)
+                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=7, cursor="hand2")
+        btn1.pack(fill=tk.X, padx=30, pady=4)
 
         status_txt = "현재: ON (스캔 필수)" if self.pallet_qr_feature_enabled else "현재: OFF (스캔 건너뜀)"
         btn_color = "#374151" if self.pallet_qr_feature_enabled else "#0369a1"
@@ -272,8 +272,90 @@ class QRScanStationApp:
 
         btn2 = tk.Button(dialog, text=f"📦 Pallet QR 리딩 기능 토글 [{status_txt}]", command=act_toggle_pallet_qr,
                          bg=btn_color, fg="#ffffff", activebackground="#475569", activeforeground="#ffffff",
-                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=8, cursor="hand2")
-        btn2.pack(fill=tk.X, padx=30, pady=5)
+                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=7, cursor="hand2")
+        btn2.pack(fill=tk.X, padx=30, pady=4)
+
+        def act_delete_record_dialog():
+            dialog.destroy()
+            self.open_delete_record_popup()
+
+        btn3 = tk.Button(dialog, text="🗑️ 엑셀 특정 행(기록) 및 카운터 삭제", command=act_delete_record_dialog,
+                         bg="#581c87", fg="#e9d5ff", activebackground="#7e22ce", activeforeground="#ffffff",
+                         font=("맑은 고딕", 10, "bold"), relief="flat", pady=7, cursor="hand2")
+        btn3.pack(fill=tk.X, padx=30, pady=4)
+
+    def open_delete_record_popup(self):
+        win = tk.Toplevel(self.root)
+        win.title("DELETE RECORD & COUNT")
+        win.configure(bg=BG_PANEL)
+        win.transient(self.root)
+        win.grab_set()
+
+        self.center_popup(win, 420, 240)
+
+        tk.Label(win, text="[ 엑셀 기록 및 카운터 삭제 ]\n삭제할 단품 DMC 코드 또는 Label QR을 입력하세요.", 
+                 font=("맑은 고딕", 10, "bold"), fg="#f87171", bg=BG_PANEL, justify=tk.CENTER).pack(pady=(15, 8))
+
+        code_entry = tk.Entry(win, font=("Consolas", 11), justify="center", bg=BG_INPUT, fg="#ffffff", insertbackground="#ffffff")
+        code_entry.pack(fill=tk.X, padx=30, pady=5, ipady=3)
+        code_entry.focus_set()
+
+        def execute_delete(event=None):
+            target_str = code_entry.get().strip().upper()
+            if not target_str:
+                return
+
+            curr_model = self.current_model.get()
+            files = self.get_all_model_files(curr_model)
+            deleted_count = 0
+            ok_removed = 0
+            ng_removed = 0
+
+            with self.file_lock:
+                for f_path in files:
+                    if not os.path.exists(f_path):
+                        continue
+                    unhide_file(f_path)
+                    wb = openpyxl.load_workbook(f_path)
+                    if "스캔실적" in wb.sheetnames:
+                        ws = wb["스캔실적"]
+                        rows_to_delete = []
+                        for r_idx in range(ws.max_row, 1, -1):
+                            row_vals = [str(ws.cell(row=r_idx, column=c).value or "").strip().upper() for c in range(1, 9)]
+                            if any(target_str in val for val in row_vals):
+                                res_val = ws.cell(row=r_idx, column=7).value
+                                seq_val = ws.cell(row=r_idx, column=4).value
+                                if seq_val != "HEADER" and seq_val != "Final HEADER":
+                                    if res_val == "NG":
+                                        ng_removed += 1
+                                    else:
+                                        ok_removed += 1
+                                rows_to_delete.append(r_idx)
+
+                        if rows_to_delete:
+                            for r_idx in rows_to_delete:
+                                ws.delete_rows(r_idx)
+                                deleted_count += 1
+                            wb.save(f_path)
+                    hide_file(f_path)
+
+            if deleted_count > 0:
+                self.model_counts[curr_model]["ok"] = max(0, self.model_counts[curr_model]["ok"] - ok_removed)
+                self.model_counts[curr_model]["ng"] = max(0, self.model_counts[curr_model]["ng"] - ng_removed)
+                self.model_counts[curr_model]["total"] = max(0, self.model_counts[curr_model]["total"] - (ok_removed + ng_removed))
+                self.save_model_counts()
+                self.update_stat_cards()
+                self.load_history_from_excel(curr_model, MODEL_CONFIG[curr_model], self.model_session_id)
+
+                win.destroy()
+                messagebox.showinfo("삭제 완료", f"총 {deleted_count}개 행이 엑셀에서 삭제되었습니다.\n(OK: -{ok_removed}, NG: -{ng_removed})", parent=self.root)
+                self.scan_entry.focus_set()
+            else:
+                messagebox.showwarning("결과 없음", "해당 코드를 가진 기록을 엑셀 파일에서 찾지 못했습니다.", parent=win)
+
+        code_entry.bind("<Return>", execute_delete)
+        tk.Button(win, text="삭제 실행", command=execute_delete, bg="#dc3545", fg="#ffffff",
+                  relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=4).pack(pady=12)
 
     def load_model_counts(self):
         default_counts = {m: {"total": 0, "ok": 0, "ng": 0} for m in MODEL_CONFIG}
@@ -933,7 +1015,7 @@ class QRScanStationApp:
         
         self.pending_items.clear()
         self.pending_tree_ids.clear()
-        self.lbl_pending_status.config(text=self.t("pending_status", count=len(self.pending_items)))
+        self.lbl_pending_status.config(text=self.t("pending_status", count=0))
         self.update_pallet_status_ui()
 
         self.update_stat_cards()
@@ -1118,7 +1200,6 @@ class QRScanStationApp:
         curr_model = self.current_model.get()
         target_code = MODEL_CONFIG[curr_model].upper()
 
-        # Pallet QR 스캔 처리
         if self.is_pallet_qr(raw_code):
             if not self.pallet_qr_feature_enabled:
                 return
@@ -1200,9 +1281,6 @@ class QRScanStationApp:
             self.open_sorting_popup(raw_code)
             return
 
-        # ==========================================
-        # Label QR 스캔 처리 (REAR 모델은 순수 단품 바코드 집계 및 엑셀 저장)
-        # ==========================================
         if is_label_qr:
             curr_box_cnt = self.pallet_state[curr_model]["box_count"]
 
@@ -1246,7 +1324,6 @@ class QRScanStationApp:
             for t_id in self.pending_tree_ids:
                 curr_vals = self.tree.item(t_id, "values")
                 if curr_vals:
-                    # [핵심 수정] 엑셀 및 UI에 현재 팔레트 번호(cur_pallet)가 정확히 매핑되도록 반영
                     self.tree.item(t_id, values=(cur_pallet, curr_vals[1], curr_vals[2], raw_code, curr_vals[4], curr_vals[5], curr_vals[6]))
 
             items_to_bundle = list(self.pending_items)
@@ -1265,7 +1342,6 @@ class QRScanStationApp:
 
             self.root.update_idletasks()
 
-            # 기반 엑셀 파일(스캔실적) A열에 Pallet No.가 완벽히 저장되도록 전달
             self.direct_finalize_excel_group(curr_model, cur_pallet, raw_code, timestamp_full, items_to_bundle, header_text)
             self.refresh_grouping_tab()
 
@@ -1274,7 +1350,6 @@ class QRScanStationApp:
                 self.update_pallet_status_ui()
                 self.open_pallet_wait_popup()
 
-        # 단품 QR
         if not is_label_qr:
             if len(self.pending_items) >= MAX_ITEMS_PER_BOX:
                 self.set_status("NG", "#dc3545", "#3a1c1f")
@@ -1381,9 +1456,6 @@ class QRScanStationApp:
 
         self.scan_entry.focus_set()
 
-    # ==========================================
-    # 엑셀 I/O 로직 (Pallet No. A열 영구 저장 보완)
-    # ==========================================
     def open_or_init_workbook(self, filepath):
         unhide_file(filepath)
         if os.path.exists(filepath):
@@ -1487,7 +1559,6 @@ class QRScanStationApp:
 
                 start_row = ws.max_row + 1
                 ts_full = f"{item['day']} {item['time']}"
-                # A열에 팔레트 번호(item.get("pallet", ""))가 정확히 저장되도록 보완
                 row_data = [item.get("pallet", ""), "-", "-", "-", item["code"], ts_full, item["result"], ""]
                 ws.append(row_data)
 
@@ -1515,7 +1586,7 @@ class QRScanStationApp:
                 for row in reversed(list(ws.iter_rows(min_row=2, max_row=ws.max_row))):
                     dmc_val = str(row[4].value).strip().upper() if row[4].value else ""
                     if dmc_val in item_codes:
-                        row[0].value = pallet_code  # A열 Pallet No. 확정 저장
+                        row[0].value = pallet_code
                         row[1].value = box_qr
                         row[2].value = box_time
                         item_codes.remove(dmc_val)
