@@ -19,7 +19,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 # ==========================================
-# 1. REAR 전용 모델 설정 (올바른 AD 코드 적용)
+# 1. REAR 전용 모델 설정
 # ==========================================
 MODEL_CONFIG = {
     'S-REAR': 'MPL02914AD',
@@ -201,7 +201,7 @@ class QRScanStationApp:
         self.root.destroy()
 
     # ==========================================
-    # MANAGER MODE (Pallet QR 토글 및 엑셀 행 삭제 기능 포함)
+    # MANAGER MODE (테이블 행 선택 삭제 및 Pallet 토글)
     # ==========================================
     def toggle_manager_mode(self):
         if self.active_popup or self.pallet_wait_popup:
@@ -275,41 +275,43 @@ class QRScanStationApp:
                          font=("맑은 고딕", 10, "bold"), relief="flat", pady=7, cursor="hand2")
         btn2.pack(fill=tk.X, padx=30, pady=4)
 
-        def act_delete_record_dialog():
+        # [요청 반영] 테이블에서 선택한 행 삭제 기능 연동 버튼
+        def act_delete_selected_row():
             dialog.destroy()
-            self.open_delete_record_popup()
+            self.delete_selected_treeview_row()
 
-        btn3 = tk.Button(dialog, text="🗑️ 엑셀 특정 행(기록) 및 카운터 삭제", command=act_delete_record_dialog,
+        btn3 = tk.Button(dialog, text="🗑️ 테이블에서 선택한 기록 및 카운터 삭제", command=act_delete_selected_row,
                          bg="#581c87", fg="#e9d5ff", activebackground="#7e22ce", activeforeground="#ffffff",
                          font=("맑은 고딕", 10, "bold"), relief="flat", pady=7, cursor="hand2")
         btn3.pack(fill=tk.X, padx=30, pady=4)
 
-    def open_delete_record_popup(self):
-        win = tk.Toplevel(self.root)
-        win.title("DELETE RECORD & COUNT")
-        win.configure(bg=BG_PANEL)
-        win.transient(self.root)
-        win.grab_set()
+    def delete_selected_treeview_row(self):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            messagebox.showwarning("선택 없음", "삭제할 기록 행을 [REAR 기록] 테이블에서 마우스로 먼저 선택해 주세요.", parent=self.root)
+            self.scan_entry.focus_set()
+            return
 
-        self.center_popup(win, 420, 240)
+        if not messagebox.askyesno("삭제 확인", "선택한 기록을 엑셀 파일과 화면에서 영구 삭제하시겠습니까?", parent=self.root):
+            self.scan_entry.focus_set()
+            return
 
-        tk.Label(win, text="[ 엑셀 기록 및 카운터 삭제 ]\n삭제할 단품 DMC 코드 또는 Label QR을 입력하세요.", 
-                 font=("맑은 고딕", 10, "bold"), fg="#f87171", bg=BG_PANEL, justify=tk.CENTER).pack(pady=(15, 8))
+        curr_model = self.current_model.get()
+        files = self.get_all_model_files(curr_model)
+        deleted_count = 0
+        ok_removed = 0
+        ng_removed = 0
 
-        code_entry = tk.Entry(win, font=("Consolas", 11), justify="center", bg=BG_INPUT, fg="#ffffff", insertbackground="#ffffff")
-        code_entry.pack(fill=tk.X, padx=30, pady=5, ipady=3)
-        code_entry.focus_set()
+        for item_id in selected_items:
+            row_vals = self.tree.item(item_id, "values")
+            if not row_vals or len(row_vals) < 7:
+                continue
 
-        def execute_delete(event=None):
-            target_str = code_entry.get().strip().upper()
-            if not target_str:
-                return
-
-            curr_model = self.current_model.get()
-            files = self.get_all_model_files(curr_model)
-            deleted_count = 0
-            ok_removed = 0
-            ng_removed = 0
+            target_pallet = str(row_vals[0]).strip().upper()
+            target_label = str(row_vals[3]).strip().upper()
+            target_dmc = str(row_vals[4]).strip().upper()
+            target_time = str(row_vals[2]).strip()
+            res_val = str(row_vals[5]).strip()
 
             with self.file_lock:
                 for f_path in files:
@@ -319,43 +321,42 @@ class QRScanStationApp:
                     wb = openpyxl.load_workbook(f_path)
                     if "스캔실적" in wb.sheetnames:
                         ws = wb["스캔실적"]
-                        rows_to_delete = []
+                        rows_to_del = []
                         for r_idx in range(ws.max_row, 1, -1):
-                            row_vals = [str(ws.cell(row=r_idx, column=c).value or "").strip().upper() for c in range(1, 9)]
-                            if any(target_str in val for val in row_vals):
-                                res_val = ws.cell(row=r_idx, column=7).value
-                                seq_val = ws.cell(row=r_idx, column=4).value
-                                if seq_val != "HEADER" and seq_val != "Final HEADER":
+                            r_dmc = str(ws.cell(row=r_idx, column=5).value or "").strip().upper()
+                            r_lbl = str(ws.cell(row=r_idx, column=2).value or "").strip().upper()
+                            r_time = str(ws.cell(row=r_idx, column=6).value or "").strip()
+
+                            if (target_dmc and target_dmc in r_dmc) or (target_label and target_label in r_lbl and target_time in r_time):
+                                seq_v = ws.cell(row=r_idx, column=4).value
+                                if seq_v != "HEADER" and seq_v != "Final HEADER":
                                     if res_val == "NG":
                                         ng_removed += 1
                                     else:
                                         ok_removed += 1
-                                rows_to_delete.append(r_idx)
+                                rows_to_del.append(r_idx)
 
-                        if rows_to_delete:
-                            for r_idx in rows_to_delete:
+                        if rows_to_del:
+                            for r_idx in rows_to_del:
                                 ws.delete_rows(r_idx)
                                 deleted_count += 1
                             wb.save(f_path)
                     hide_file(f_path)
 
-            if deleted_count > 0:
-                self.model_counts[curr_model]["ok"] = max(0, self.model_counts[curr_model]["ok"] - ok_removed)
-                self.model_counts[curr_model]["ng"] = max(0, self.model_counts[curr_model]["ng"] - ng_removed)
-                self.model_counts[curr_model]["total"] = max(0, self.model_counts[curr_model]["total"] - (ok_removed + ng_removed))
-                self.save_model_counts()
-                self.update_stat_cards()
-                self.load_history_from_excel(curr_model, MODEL_CONFIG[curr_model], self.model_session_id)
+            self.tree.delete(item_id)
 
-                win.destroy()
-                messagebox.showinfo("삭제 완료", f"총 {deleted_count}개 행이 엑셀에서 삭제되었습니다.\n(OK: -{ok_removed}, NG: -{ng_removed})", parent=self.root)
-                self.scan_entry.focus_set()
-            else:
-                messagebox.showwarning("결과 없음", "해당 코드를 가진 기록을 엑셀 파일에서 찾지 못했습니다.", parent=win)
+        if deleted_count > 0:
+            self.model_counts[curr_model]["ok"] = max(0, self.model_counts[curr_model]["ok"] - ok_removed)
+            self.model_counts[curr_model]["ng"] = max(0, self.model_counts[curr_model]["ng"] - ng_removed)
+            self.model_counts[curr_model]["total"] = max(0, self.model_counts[curr_model]["total"] - (ok_removed + ng_removed))
+            self.save_model_counts()
+            self.update_stat_cards()
 
-        code_entry.bind("<Return>", execute_delete)
-        tk.Button(win, text="삭제 실행", command=execute_delete, bg="#dc3545", fg="#ffffff",
-                  relief="flat", font=("맑은 고딕", 10, "bold"), padx=15, pady=4).pack(pady=12)
+            messagebox.showinfo("삭제 완료", f"선택한 행이 성공적으로 삭제되었습니다.\n(OK: -{ok_removed}, NG: -{ng_removed})", parent=self.root)
+        else:
+            messagebox.showwarning("파일 반영 실패", "엑셀 파일에서 일치하는 행을 찾지 못했습니다.", parent=self.root)
+
+        self.scan_entry.focus_set()
 
     def load_model_counts(self):
         default_counts = {m: {"total": 0, "ok": 0, "ng": 0} for m in MODEL_CONFIG}
@@ -897,8 +898,9 @@ class QRScanStationApp:
                     scanned_text = "".join(self.global_scan_buffer).strip()
                     self.global_scan_buffer.clear()
                     self.scan_entry.delete(0, tk.END)
+                    # [요청 반영] Caps Lock 대응: 리딩된 텍스트 무조건 대문자 처리
                     if scanned_text:
-                        self.process_scan(scanned_text)
+                        self.process_scan(scanned_text.upper())
             elif event.char and event.char.isprintable():
                 self.global_scan_buffer.append(event.char)
                 if len(self.global_scan_buffer) >= 10:
@@ -914,7 +916,7 @@ class QRScanStationApp:
             self.global_scan_buffer.clear()
             self.scan_entry.delete(0, tk.END)
             if scanned_text:
-                self.process_scan(scanned_text)
+                self.process_scan(scanned_text.upper())
 
     def set_status(self, text, fg_color, bg_color):
         if len(text) <= 2:
@@ -1182,7 +1184,8 @@ class QRScanStationApp:
             self.root.after_cancel(self.auto_submit_timer)
             self.auto_submit_timer = None
 
-        raw_code = raw_code.strip()
+        # [요청 반영] 대문자 강제 변환
+        raw_code = raw_code.strip().upper()
         self.scan_entry.delete(0, tk.END)
         self.global_scan_buffer.clear()
 
